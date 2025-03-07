@@ -9,6 +9,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 ## Inhaltsverzeichnis
 
 - [Voraussetzungen](#voraussetzungen)
+- [ICC-Zugang einrichten](#icc-zugang-einrichten)
 - [Schnellstart](#schnellstart)
 - [Detaillierte Anleitung](#detaillierte-anleitung)
 - [Komponenten](#komponenten)
@@ -24,12 +25,32 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - Eine aktive VPN-Verbindung zum HAW-Netz (wenn außerhalb des HAW-Netzes)
 - (Optional) Make installiert für vereinfachte Befehle
 
+## ICC-Zugang einrichten
+
+Bevor Sie beginnen können, müssen Sie sich bei der ICC anmelden und Ihre Kubeconfig-Datei einrichten. Dazu stellen wir ein Hilfsskript bereit:
+
+```bash
+# Öffnet den Browser mit der ICC-Login-Seite und führt Sie durch die Einrichtung
+./scripts/icc-login.sh
+```
+
+Dieses Skript:
+1. Öffnet die ICC-Login-Seite in Ihrem Standard-Browser
+2. Führt Sie durch den Anmeldeprozess mit Ihrer infw-Kennung
+3. Hilft beim Speichern und Einrichten der heruntergeladenen Kubeconfig-Datei
+4. Testet die Verbindung und zeigt Ihre Namespace-Informationen an
+
+Alternativ können Sie die [manuelle Einrichtung](DOCUMENTATION.md#1-icc-zugang-einrichten) durchführen.
+
 ## Schnellstart
 
 ```bash
 # Repository klonen
 git clone <repository-url>
 cd icc-ollama-deployment
+
+# ICC-Zugang einrichten (falls noch nicht geschehen)
+./scripts/icc-login.sh
 
 # Konfiguration anpassen
 cp configs/config.example.sh configs/config.sh

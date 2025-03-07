@@ -15,11 +15,28 @@ Diese Dokumentation führt Sie durch den gesamten Prozess der Einrichtung und Be
 
 ## 1. ICC-Zugang einrichten
 
-### Login und Kubeconfig erhalten
+### Automatische Einrichtung (empfohlen)
 
-1. Besuchen Sie das Anmeldeportal der ICC und authentifizieren Sie sich mit Ihrer infw-Kennung.
-2. Laden Sie die generierte Kubeconfig-Datei herunter.
-3. Platzieren Sie die Kubeconfig-Datei in Ihrem `~/.kube/` Verzeichnis oder setzen Sie die Umgebungsvariable `KUBECONFIG`.
+Der einfachste Weg, um die ICC-Zugang einzurichten, ist unser Hilfsskript zu verwenden:
+
+```bash
+./scripts/icc-login.sh
+```
+
+Dieses Skript führt Sie durch den gesamten Prozess:
+1. Öffnet die ICC-Login-Seite in Ihrem Standard-Browser
+2. Führt Sie durch den Anmeldeprozess mit Ihrer infw-Kennung
+3. Hilft beim Speichern und Einrichten der heruntergeladenen Kubeconfig-Datei
+4. Testet die Verbindung und zeigt Ihre Namespace-Informationen an
+
+### Manuelle Einrichtung
+
+Falls Sie die manuelle Einrichtung bevorzugen:
+
+1. Besuchen Sie das Anmeldeportal der ICC unter https://icc-login.informatik.haw-hamburg.de/
+2. Authentifizieren Sie sich mit Ihrer infw-Kennung
+3. Laden Sie die generierte Kubeconfig-Datei herunter
+4. Platzieren Sie die Kubeconfig-Datei in Ihrem `~/.kube/` Verzeichnis oder setzen Sie die Umgebungsvariable `KUBECONFIG`
 
 ```bash
 # Linux/macOS
@@ -100,12 +117,15 @@ terraform apply
 Um auf Ihren Dienst zuzugreifen, können Sie Port-Forwarding nutzen:
 
 ```bash
-# Für Ollama API
-kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434
+# Für Ollama API und WebUI gleichzeitig (empfohlen)
+./scripts/port-forward.sh
 
-# Für WebUI (wenn in Kubernetes deployed)
+# Oder manuell für einzelne Dienste
+kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434
 kubectl -n $NAMESPACE port-forward svc/$WEBUI_SERVICE_NAME 8080:8080
 ```
+
+Anschließend können Sie die WebUI unter http://localhost:8080 in Ihrem Browser öffnen.
 
 ### Ingress für öffentlichen Zugriff einrichten
 
@@ -116,16 +136,22 @@ Wenn Sie Ihren Dienst öffentlich zugänglich machen möchten, folgen Sie der An
 Nachdem Ollama läuft, können Sie Modelle herunterladen:
 
 ```bash
-# Stellen Sie sicher, dass Port-Forwarding aktiv ist
-kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434
+# Mit unserem Hilfsskript (empfohlen)
+./scripts/pull-model.sh llama3:8b
 
-# In einem anderen Terminal
-curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3:8b"}'  # Für llama3 8B Modell
+# Oder manuell via curl
+curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3:8b"}'
 ```
 
 Oder über die WebUI, falls Sie diese installiert haben.
 
 ## 7. Fehlerbehebung
+
+### GPU-Funktionalität testen
+
+```bash
+./scripts/test-gpu.sh
+```
 
 ### Überprüfen des Pod-Status
 
@@ -143,12 +169,6 @@ kubectl -n $NAMESPACE logs <pod-name>
 
 ```bash
 kubectl -n $NAMESPACE exec -it <pod-name> -- /bin/bash
-```
-
-### GPU-Status überprüfen
-
-```bash
-kubectl -n $NAMESPACE exec -it <pod-name> -- nvidia-smi
 ```
 
 ## 8. Ressourcen bereinigen
