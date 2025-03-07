@@ -155,7 +155,7 @@ kubectl -n $NAMESPACE port-forward svc/$WEBUI_SERVICE_NAME 8080:8080
 
 Anschließend können Sie die WebUI unter http://localhost:8080 in Ihrem Browser öffnen.
 
-### Ingress für öffentlichen Zugriff einrichten
+### Ingress für öffentlichen Zugriff einrichten (TODO TEST)
 
 Wenn Sie Ihren Dienst öffentlich zugänglich machen möchten, folgen Sie der Anleitung in `scripts/create-ingress.sh`. Denken Sie daran, dass Sie ein Impressum und eine Datenschutzerklärung benötigen oder einen passwortgeschützten Zugang einrichten müssen.
 
