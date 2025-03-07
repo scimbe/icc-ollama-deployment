@@ -24,9 +24,30 @@ check_command() {
 
 # Funktion zur Überprüfung der Kubernetes-Verbindung
 check_kubernetes() {
-    if kubectl cluster-info &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Kubernetes-Verbindung hergestellt"
-        kubectl config current-context
+    # Namespace aus Kubeconfig ermitteln oder vom Benutzer abfragen
+    CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || echo "")
+    if [ -z "$CURRENT_CONTEXT" ]; then
+        echo -e "${RED}✗${NC} Kein Kubernetes-Kontext gefunden. Sind Sie bei der ICC eingeloggt?"
+        return 1
+    fi
+    
+    NAMESPACE=$(kubectl config view --minify -o jsonpath='{..namespace}' 2>/dev/null || echo "")
+    if [ -z "$NAMESPACE" ]; then
+        echo -e "${YELLOW}Kein Standard-Namespace gefunden. Bitte geben Sie Ihren Namespace ein (z.B. wXYZ123-default):${NC}"
+        read -r NAMESPACE
+        if [ -z "$NAMESPACE" ]; then
+            echo -e "${RED}✗${NC} Kein Namespace angegeben"
+            return 1
+        fi
+    fi
+    
+    echo -e "Verwende Namespace: ${YELLOW}$NAMESPACE${NC}"
+    
+    # Prüfung mit Namespace
+    if kubectl -n "$NAMESPACE" cluster-info &> /dev/null; then
+        echo -e "${GREEN}✓${NC} Kubernetes-Verbindung zur ICC hergestellt"
+        echo -e "   Kontext: $(kubectl config current-context)"
+        echo -e "   Namespace: $NAMESPACE"
         return 0
     else
         echo -e "${RED}✗${NC} Keine Verbindung zu Kubernetes möglich"
@@ -63,7 +84,8 @@ if [ $kubectl_ok -eq 1 ] && [ $k8s_ok -eq 1 ]; then
 else
     echo -e "${RED}Kubernetes-Setup: FEHLT${NC}"
     echo -e "${YELLOW}Bitte installieren Sie kubectl und stellen Sie sicher, dass Sie Zugriff auf die ICC haben.${NC}"
-    echo -e "${YELLOW}Siehe: https://kubernetes.io/docs/tasks/tools/${NC}"
+    echo -e "${YELLOW}Verwenden Sie das Skript ./scripts/icc-login.sh, um sich anzumelden.${NC}"
+    echo -e "${YELLOW}Siehe auch: https://kubernetes.io/docs/tasks/tools/${NC}"
 fi
 
 if [ $terraform_ok -eq 1 ]; then
@@ -99,6 +121,13 @@ fi
 # Ausgabe des Status
 if [ $kubectl_ok -eq 1 ] && [ $k8s_ok -eq 1 ]; then
     echo -e "\n${GREEN}Das System ist bereit für das ICC Ollama Deployment.${NC}"
+    
+    # Speichere Namespace für spätere Verwendung
+    if [ -n "$NAMESPACE" ] && [ ! -f "$ROOT_DIR/configs/config.sh" ]; then
+        echo -e "\n${YELLOW}Tipp: Erstellen Sie die Konfigurationsdatei mit Ihrem Namespace:${NC}"
+        echo -e "cp configs/config.example.sh configs/config.sh"
+        echo -e "sed -i 's/wXYZ123-default/$NAMESPACE/g' configs/config.sh"
+    fi
 else
     echo -e "\n${RED}Einige Voraussetzungen sind nicht erfüllt. Bitte beheben Sie die Probleme vor dem Deployment.${NC}"
     exit 1

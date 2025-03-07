@@ -106,7 +106,7 @@ echo
 # Teste die Verbindung
 echo -e "${BLUE}=== Verbindungstest ===${NC}"
 echo -e "Teste Verbindung zur ICC..."
-if kubectl cluster-info &> /dev/null; then
+if kubectl cluster-info  &> /dev/null; then
     echo -e "${GREEN}✓${NC} Verbindung erfolgreich hergestellt!"
     echo -e "Ihre aktueller Kontext ist: $(kubectl config current-context)"
     
