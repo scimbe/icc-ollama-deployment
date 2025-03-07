@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "!!!!!!!!!!! Noch nicht getestet !!!!!!!!!!!!!!!!"
 # Skript zum Erstellen eines Ingress für öffentlichen Zugriff
 set -e
 
