@@ -42,7 +42,7 @@ spec:
           name: webui
           env:
             - name: OLLAMA_BASE_URL
-              value: http://$OLLAMA_SERVICE_NAME:11434/api
+              value: http://$OLLAMA_SERVICE_NAME:11434/
           ports:
             - containerPort: 8080
               protocol: TCP
