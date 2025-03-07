@@ -34,6 +34,7 @@ kubectl -n "$NAMESPACE" port-forward svc/"$OLLAMA_SERVICE_NAME" 11434:11434 &
 OLLAMA_PID=$!
 
 echo "Starte Port-Forwarding für WebUI auf Port 8080..."
+export KUBECTL_PORT_FORWARD_WEBSOCKETS="true"
 kubectl -n "$NAMESPACE" port-forward svc/"$WEBUI_SERVICE_NAME" 8080:8080 &
 WEBUI_PID=$!
 

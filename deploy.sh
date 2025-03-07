@@ -51,6 +51,7 @@ echo
 echo "Um auf Ollama zuzugreifen, führen Sie aus:"
 echo "  kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434"
 echo -e "\nUm auf die WebUI zuzugreifen, führen Sie in einem anderen Terminal aus:"
+echo -e "export KUBECTL_PORT_FORWARD_WEBSOCKETS=\"true\""
 echo "  kubectl -n $NAMESPACE port-forward svc/$WEBUI_SERVICE_NAME 8080:8080"
 echo -e "\nÖffnen Sie dann http://localhost:8080 in Ihrem Browser"
 
