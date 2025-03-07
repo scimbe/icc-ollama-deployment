@@ -94,7 +94,8 @@ fi
 
 # Hole verfügbare Modelle
 echo -e "\n=== Verfügbare Modelle prüfen ==="
-AVAILABLE_MODELS=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- ollama list -j 2>/dev/null | grep "name" | awk -F'"' '{print $4}')
+MODELS_OUTPUT=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- ollama list 2>/dev/null)
+AVAILABLE_MODELS=$(echo "$MODELS_OUTPUT" | grep -v NAME | awk '{print $1}')
 
 if [ -z "$AVAILABLE_MODELS" ]; then
     echo "Keine Modelle gefunden. Bitte laden Sie zuerst ein Modell mit:"
@@ -158,10 +159,26 @@ for i in $(seq 1 $ITERATIONS); do
     START_TIME=$(date +%s.%N)
     
     # Führe Inferenz durch
-    RESULT=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- bash -c "cat /tmp/prompt.txt | ollama run $MODEL --verbose 2>&1" | tee /dev/stderr | grep -i "eval\|load\|tokens")
+    RESULT=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- bash -c "cat /tmp/prompt.txt | ollama run $MODEL --verbose 2>&1" || echo "Inferenzfehler")
     
     # Ende Zeitmessung
     END_TIME=$(date +%s.%N)
+    
+    # Prüfe auf Fehler
+    if [[ "$RESULT" == *"Inferenzfehler"* ]]; then
+        echo "  ❌ Fehler bei der Inferenz aufgetreten."
+        echo "  Versuche ohne --verbose Option..."
+        
+        # Versuche ohne --verbose Option
+        START_TIME=$(date +%s.%N)
+        RESULT=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- bash -c "cat /tmp/prompt.txt | ollama run $MODEL" || echo "Inferenzfehler")
+        END_TIME=$(date +%s.%N)
+        
+        if [[ "$RESULT" == *"Inferenzfehler"* ]]; then
+            echo "  ❌ Inferenz fehlgeschlagen. Überspringe diesen Durchlauf."
+            continue
+        fi
+    fi
     
     # GPU-Status nach dem Durchlauf
     GPU_USAGE_AFTER=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits)
@@ -171,9 +188,15 @@ for i in $(seq 1 $ITERATIONS); do
     DURATION=$(echo "$END_TIME - $START_TIME" | bc)
     TIMES[$i]=$DURATION
     
-    # Extrahiere Token-Informationen
-    TOKENS_INFO=$(echo "$RESULT" | grep -i "tokens")
-    TOTAL_TOKENS=$(echo "$TOKENS_INFO" | grep -oE '[0-9]+' | head -n 1 || echo "0")
+    # Extrahiere Token-Informationen wenn möglich
+    TOKENS_INFO=$(echo "$RESULT" | grep -i "tokens" || echo "")
+    if [ -n "$TOKENS_INFO" ]; then
+        TOTAL_TOKENS=$(echo "$TOKENS_INFO" | grep -oE '[0-9]+' | head -n 1 || echo "0")
+    else
+        # Schätze Anzahl der Tokens anhand der Ausgabe
+        RESPONSE_TEXT=$(echo "$RESULT" | wc -w)
+        TOTAL_TOKENS=$RESPONSE_TEXT
+    fi
     
     # Berechne Tokens pro Sekunde
     if [ "$TOTAL_TOKENS" -gt 0 ]; then
@@ -185,7 +208,7 @@ for i in $(seq 1 $ITERATIONS); do
     
     # Zeige Ergebnis dieses Durchlaufs
     echo "  Dauer: ${TIMES[$i]} Sekunden"
-    echo "  Tokens: $TOTAL_TOKENS"
+    echo "  Geschätzte Tokens: $TOTAL_TOKENS"
     echo "  Rate: ${TOKEN_RATES[$i]} Tokens/Sekunde"
     echo "  GPU-Auslastung: $GPU_USAGE_BEFORE% -> $GPU_USAGE_AFTER%"
     echo "  GPU-Speicher: $MEM_USAGE_BEFORE MB -> $MEM_USAGE_AFTER MB"
@@ -197,37 +220,60 @@ for i in $(seq 1 $ITERATIONS); do
     fi
 done
 
-# Berechne Durchschnittswerte
-SUM=0
+# Zähle erfolgreiche Durchläufe
+SUCCESSFUL_RUNS=0
 for t in "${TIMES[@]}"; do
-    SUM=$(echo "$SUM + $t" | bc)
-done
-AVG_TIME=$(echo "scale=2; $SUM / $ITERATIONS" | bc)
-
-SUM_RATES=0
-COUNT_RATES=0
-for r in "${TOKEN_RATES[@]}"; do
-    if [ "$r" != "N/A" ]; then
-        SUM_RATES=$(echo "$SUM_RATES + $r" | bc)
-        COUNT_RATES=$((COUNT_RATES + 1))
+    if [ -n "$t" ]; then
+        SUCCESSFUL_RUNS=$((SUCCESSFUL_RUNS + 1))
     fi
 done
 
-if [ "$COUNT_RATES" -gt 0 ]; then
-    AVG_RATE=$(echo "scale=2; $SUM_RATES / $COUNT_RATES" | bc)
-else
-    AVG_RATE="N/A"
-fi
+# Berechne Durchschnittswerte, falls Durchläufe erfolgreich waren
+if [ "$SUCCESSFUL_RUNS" -gt 0 ]; then
+    # Berechne Durchschnittswerte
+    SUM=0
+    for t in "${TIMES[@]}"; do
+        if [ -n "$t" ]; then
+            SUM=$(echo "$SUM + $t" | bc)
+        fi
+    done
+    AVG_TIME=$(echo "scale=2; $SUM / $SUCCESSFUL_RUNS" | bc)
 
-# Zeige Benchmark-Zusammenfassung
-echo -e "\n=== Benchmark-Ergebnisse ==="
-echo "Modell: $MODEL"
-for i in $(seq 1 $ITERATIONS); do
-    echo "Durchlauf $i: ${TIMES[$i]} Sekunden (${TOKEN_RATES[$i]} Tokens/Sek.)"
-done
-echo
-echo "Durchschnittliche Inferenz-Dauer: $AVG_TIME Sekunden"
-echo "Durchschnittliche Token-Rate: $AVG_RATE Tokens/Sekunde"
+    SUM_RATES=0
+    COUNT_RATES=0
+    for r in "${TOKEN_RATES[@]}"; do
+        if [ "$r" != "N/A" ] && [ -n "$r" ]; then
+            SUM_RATES=$(echo "$SUM_RATES + $r" | bc)
+            COUNT_RATES=$((COUNT_RATES + 1))
+        fi
+    done
+
+    if [ "$COUNT_RATES" -gt 0 ]; then
+        AVG_RATE=$(echo "scale=2; $SUM_RATES / $COUNT_RATES" | bc)
+    else
+        AVG_RATE="N/A"
+    fi
+
+    # Zeige Benchmark-Zusammenfassung
+    echo -e "\n=== Benchmark-Ergebnisse ==="
+    echo "Modell: $MODEL"
+    echo "Erfolgreiche Durchläufe: $SUCCESSFUL_RUNS von $ITERATIONS"
+    
+    for i in $(seq 1 $ITERATIONS); do
+        if [ -n "${TIMES[$i]}" ]; then
+            echo "Durchlauf $i: ${TIMES[$i]} Sekunden (${TOKEN_RATES[$i]} Tokens/Sek.)"
+        else
+            echo "Durchlauf $i: Fehlgeschlagen"
+        fi
+    done
+    
+    echo
+    echo "Durchschnittliche Inferenz-Dauer: $AVG_TIME Sekunden"
+    echo "Durchschnittliche Token-Rate: $AVG_RATE Tokens/Sekunde"
+else
+    echo -e "\n=== Benchmark-Ergebnisse ==="
+    echo "Alle Durchläufe sind fehlgeschlagen. Bitte überprüfen Sie die Konfiguration."
+fi
 
 # Zeige GPU-Status nach dem Benchmark
 echo -e "\n=== GPU-Status nach dem Benchmark ==="

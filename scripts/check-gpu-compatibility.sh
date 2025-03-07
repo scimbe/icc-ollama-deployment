@@ -176,43 +176,71 @@ else
     echo "  Möglicherweise ist CUDA nicht installiert oder in einem anderen Verzeichnis."
 fi
 
-# Erstelle einen einfachen GPU-Testcode
-echo -e "\n=== Ollama GPU-Inferenztest ==="
+# Überprüfe Ollama API vom lokalen System
+echo -e "\n=== Ollama API-Test ==="
+# Starte temporäres Port-Forwarding
+PORT_FWD_PID=""
+cleanup() {
+    if [ -n "$PORT_FWD_PID" ]; then
+        kill $PORT_FWD_PID 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
 
-# Prüfe, ob jq installiert ist
-if ! kubectl -n "$NAMESPACE" exec "$POD_NAME" -- which jq &> /dev/null; then
-    echo -e "${YELLOW}⚠ jq ist nicht im Pod installiert, einige Tests werden übersprungen${NC}"
-    API_TEST="Übersprungen (jq fehlt)"
-else
-    # Teste Ollama API
-    if kubectl -n "$NAMESPACE" exec "$POD_NAME" -- curl -s http://localhost:11434/api/tags | grep -q "models"; then
-        echo -e "${GREEN}✓ Ollama API funktioniert${NC}"
-        API_TEST="Erfolgreich"
-        
-        # Prüfe, ob Modelle verfügbar sind
-        MODELS=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- curl -s http://localhost:11434/api/tags | jq -r '.models[].name' 2>/dev/null)
+echo "Starte temporäres Port-Forwarding für API-Test..."
+kubectl -n "$NAMESPACE" port-forward "svc/$OLLAMA_SERVICE_NAME" 11434:11434 &>/dev/null &
+PORT_FWD_PID=$!
+sleep 2
+
+# Teste die Ollama API vom lokalen System aus
+API_RESPONSE=$(curl -s http://localhost:11434/api/tags 2>/dev/null)
+if [ -n "$API_RESPONSE" ]; then
+    echo -e "${GREEN}✓ Ollama API ist erreichbar${NC}"
+    
+    # Versuche, die Modelle zu extrahieren (mit und ohne jq)
+    if command -v jq &> /dev/null; then
+        MODELS=$(echo "$API_RESPONSE" | jq -r '.models[].name' 2>/dev/null)
         if [ -n "$MODELS" ]; then
             MODEL_COUNT=$(echo "$MODELS" | wc -l)
             echo "  $MODEL_COUNT Modelle verfügbar:"
             echo "$MODELS" | sed 's/^/  - /'
-            
-            # Empfehle einen kurzen Inferenztest
-            echo
-            echo -e "${YELLOW}Empfehlung: Führen Sie einen Inferenztest durch:${NC}"
-            echo "  ./scripts/test-gpu.sh"
-            echo "oder"
-            echo "  ./scripts/benchmark-gpu.sh"
-            
             API_TEST="Erfolgreich ($MODEL_COUNT Modelle)"
         else
-            echo "  Keine Modelle verfügbar. Laden Sie ein Modell mit:"
-            echo "  ./scripts/pull-model.sh llama3:8b"
-            API_TEST="Funktioniert, aber keine Modelle"
+            echo "  Keine Modelle verfügbar oder Antwort hat unerwartetes Format."
+            API_TEST="Erreichbar, aber keine Modelle gefunden"
         fi
     else
-        echo -e "${RED}✗ Ollama API scheint nicht zu funktionieren${NC}"
-        API_TEST="Fehlgeschlagen"
+        # Einfache Prüfung ohne jq
+        if [[ "$API_RESPONSE" == *"models"* ]]; then
+            echo "  API antwortet mit Modell-Informationen"
+            echo "  Für detaillierte Modell-Liste installieren Sie jq"
+            API_TEST="Erfolgreich (Format unbekannt)"
+        else
+            echo "  API antwortet, aber Format ist unbekannt"
+            API_TEST="Erreichbar, Format unbekannt"
+        fi
     fi
+    
+    # Empfehlung für Inferenztests
+    echo -e "\n${YELLOW}Empfehlung: Führen Sie einen Inferenztest durch:${NC}"
+    echo "  ./scripts/test-gpu.sh"
+    echo "oder"
+    echo "  ./scripts/benchmark-gpu.sh"
+    
+else
+    echo -e "${RED}✗ Ollama API ist nicht erreichbar${NC}"
+    echo "  Überprüfen Sie, ob der Ollama-Server läuft und die Netzwerkkonfiguration korrekt ist."
+    API_TEST="Nicht erreichbar"
+fi
+
+# Überprüfe, ob im Container curl installiert ist
+if kubectl -n "$NAMESPACE" exec "$POD_NAME" -- which curl &> /dev/null; then
+    CURL_STATUS="${GREEN}Verfügbar${NC}"
+else
+    CURL_STATUS="${YELLOW}Nicht verfügbar${NC}"
+    echo -e "\n${YELLOW}⚠ curl ist nicht im Container installiert${NC}"
+    echo "  Einige API-Tests im Container werden nicht funktionieren."
+    echo "  Dies beeinträchtigt jedoch nicht die GPU-Funktionalität von Ollama."
 fi
 
 # Zusammenfassung
@@ -227,6 +255,7 @@ echo -e "GPU-Hardware:      $GPU_STATUS"
 echo -e "K8s-Konfiguration: $(if [[ "$K8S_GPU_CONFIG" == *"nvidia.com/gpu"* ]]; then echo -e "${GREEN}Korrekt${NC}"; else echo -e "${RED}Fehlerhaft${NC}"; fi)"
 echo -e "CUDA-Bibliotheken: $(if [[ "$CUDA_LIBS" != *"Keine CUDA-Bibliotheken gefunden"* ]]; then echo -e "${GREEN}Verfügbar${NC}"; else echo -e "${YELLOW}Nicht gefunden${NC}"; fi)"
 echo -e "Ollama API:        $API_TEST"
+echo -e "curl im Container: $CURL_STATUS"
 
 echo
 if [[ "$GPU_STATUS" == *"Verfügbar"* ]] && [[ "$K8S_GPU_CONFIG" == *"nvidia.com/gpu"* ]]; then

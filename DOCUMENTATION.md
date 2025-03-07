@@ -11,8 +11,9 @@ Diese Dokumentation führt Sie durch den gesamten Prozess der Einrichtung und Be
 5. [Modelle herunterladen und verwenden](#5-modelle-herunterladen-und-verwenden)
 6. [Auf den Dienst zugreifen](#6-auf-den-dienst-zugreifen)
 7. [GPU-Ressourcen skalieren](#7-gpu-ressourcen-skalieren)
-8. [Fehlerbehebung](#8-fehlerbehebung)
-9. [Ressourcen bereinigen](#9-ressourcen-bereinigen)
+8. [GPU-Testen und Überwachen](#8-gpu-testen-und-überwachen)
+9. [Fehlerbehebung](#9-fehlerbehebung)
+10. [Ressourcen bereinigen](#10-ressourcen-bereinigen)
 
 ## 1. ICC-Zugang einrichten
 
@@ -194,20 +195,105 @@ Das Skript führt folgende Aktionen aus:
 - Änderungen durch `scale-gpu.sh` sind temporär und werden bei einem erneuten Deployment auf die Werte aus der `config.sh` zurückgesetzt
 - Für permanente Änderungen sollten Sie den `GPU_COUNT`-Wert in Ihrer `configs/config.sh` aktualisieren
 
-### Überprüfen der GPU-Nutzung
+## 8. GPU-Testen und Überwachen
 
-Nach der Skalierung können Sie die GPU-Nutzung und -Verfügbarkeit überprüfen:
+Das Projekt bietet mehrere Skripte für Tests, Überwachung und Benchmarking der GPU-Funktionalität.
+
+### GPU-Funktionalität testen
+
+Der grundlegendste Test, um sicherzustellen, dass Ihre GPU korrekt konfiguriert ist:
 
 ```bash
-# GPU-Funktionalität testen
 ./scripts/test-gpu.sh
-
-# Details zum Ressourcenverbrauch anzeigen
-POD_NAME=$(kubectl -n $NAMESPACE get pod -l service=ollama -o jsonpath='{.items[0].metadata.name}')
-kubectl -n $NAMESPACE exec $POD_NAME -- nvidia-smi
+# oder mit Make
+make gpu-test
 ```
 
-## 8. Fehlerbehebung
+Dieses Skript führt folgende Tests durch:
+- Prüft die NVIDIA GPU-Verfügbarkeit mit `nvidia-smi`
+- Überprüft CUDA-Umgebungsvariablen
+- Listet verfügbare Modelle auf
+- Testet die Ollama API
+- Bietet einen optionalen Inferenztest mit einem ausgewählten Modell
+
+### GPU-Kompatibilität prüfen
+
+Für eine detaillierte Analyse der GPU-Konfiguration:
+
+```bash
+./scripts/check-gpu-compatibility.sh
+# oder mit Make
+make gpu-compat
+```
+
+Dieses Skript prüft:
+- Kubernetes-Konfiguration (Ressourcenlimits und Tolerations)
+- NVIDIA-Treiber und CUDA-Version
+- GPU-Hardware-Informationen (Modell, Speicher, Compute-Capability)
+- CUDA-Bibliotheken
+- Ollama API-Funktionalität
+
+### GPU-Leistung messen
+
+Benchmarks für eine detaillierte Leistungsanalyse:
+
+```bash
+# Standard-Benchmark mit dem ersten verfügbaren Modell
+./scripts/benchmark-gpu.sh
+
+# Benchmark für ein bestimmtes Modell
+./scripts/benchmark-gpu.sh llama3:8b
+# oder mit Make
+make gpu-bench MODEL=llama3:8b
+
+# Angepasster Benchmark
+./scripts/benchmark-gpu.sh -m llama3:8b -i 5 -p "Erkläre Quantencomputing" -t 200
+```
+
+Der Benchmark liefert:
+- Token-Generierungsraten
+- Inferenz-Dauer
+- GPU-Auslastung während der Inferenz
+- Speichernutzung
+
+### GPU-Ressourcen überwachen
+
+Überwachen Sie Ihre GPU-Nutzung in Echtzeit:
+
+```bash
+./scripts/monitor-gpu.sh
+# oder mit Make
+make gpu-monitor
+```
+
+Die Überwachung kann angepasst werden:
+```bash
+# 10 Messungen im 5-Sekunden-Intervall mit kompakter Ausgabe
+./scripts/monitor-gpu.sh -i 5 -c 10 -f compact
+
+# Speichern der Daten in CSV-Format
+./scripts/monitor-gpu.sh -f csv -s gpu_metrics.csv
+```
+
+### Ollama API-Client für Tests
+
+Für direkte Inferenz-Tests und API-Interaktionen:
+
+```bash
+# Liste aller Modelle anzeigen
+./scripts/ollama-api-client.sh list
+
+# Einfachen Inferenz-Test durchführen
+./scripts/ollama-api-client.sh test llama3:8b
+
+# Performance-Benchmark
+./scripts/ollama-api-client.sh benchmark llama3:8b
+
+# Anzeigen der aktuellen GPU-Statistiken
+./scripts/ollama-api-client.sh gpu-stats
+```
+
+## 9. Fehlerbehebung
 
 ### "Connection refused" Fehler bei der WebUI
 
@@ -215,31 +301,70 @@ Wenn Sie beim Zugriff auf die WebUI Fehler wie "connection refused" erhalten, ü
 1. Ist mindestens ein Modell geladen? Die WebUI funktioniert erst, nachdem ein Modell geladen wurde.
 2. Führen Sie `./scripts/pull-model.sh llama3:8b` aus und versuchen Sie es erneut.
 
-### GPU-Funktionalität testen
+### GPU-Probleme diagnostizieren
+
+Führen Sie folgende Schritte aus, um GPU-Probleme zu diagnostizieren:
+
+1. Überprüfen Sie die GPU-Kompatibilität:
+   ```bash
+   ./scripts/check-gpu-compatibility.sh
+   ```
+
+2. Testen Sie die grundlegende GPU-Funktionalität:
+   ```bash
+   ./scripts/test-gpu.sh
+   ```
+
+3. Überprüfen Sie die Deployment-Konfiguration:
+   ```bash
+   kubectl -n $NAMESPACE get deployment $OLLAMA_DEPLOYMENT_NAME -o yaml | grep -A 10 resources
+   ```
+
+4. Prüfen Sie die Pod-Logs auf Fehler:
+   ```bash
+   kubectl -n $NAMESPACE logs $POD_NAME
+   ```
+
+5. Überprüfen Sie die CUDA-Konfiguration im Container:
+   ```bash
+   kubectl -n $NAMESPACE exec -it $POD_NAME -- bash -c 'echo $LD_LIBRARY_PATH'
+   kubectl -n $NAMESPACE exec -it $POD_NAME -- nvidia-smi
+   ```
+
+### Modell- und API-Probleme
+
+Bei Problemen mit Modellen oder der API:
+
+1. Überprüfen Sie, ob die API funktioniert:
+   ```bash
+   ./scripts/ollama-api-client.sh api-health
+   ```
+
+2. Prüfen Sie, ob Modelle verfügbar sind:
+   ```bash
+   ./scripts/ollama-api-client.sh list
+   ```
+
+3. Versuchen Sie, ein kleines Modell zu laden und zu testen:
+   ```bash
+   ./scripts/pull-model.sh gemma:2b
+   ./scripts/ollama-api-client.sh test gemma:2b
+   ```
+
+### Weitere Diagnostik
 
 ```bash
-./scripts/test-gpu.sh
-```
-
-### Überprüfen des Pod-Status
-
-```bash
+# Überprüfen des Pod-Status
 kubectl -n $NAMESPACE get pods
-```
 
-### Pod-Logs anzeigen
-
-```bash
+# Pod-Logs anzeigen
 kubectl -n $NAMESPACE logs <pod-name>
-```
 
-### Interaktive Shell im Container
-
-```bash
+# Interaktive Shell im Container
 kubectl -n $NAMESPACE exec -it <pod-name> -- /bin/bash
 ```
 
-## 9. Ressourcen bereinigen
+## 10. Ressourcen bereinigen
 
 Wenn Sie die Deployment entfernen möchten:
 

@@ -27,6 +27,7 @@ show_help() {
     echo "  benchmark MODEL   Performance-Benchmark für ein Modell durchführen"
     echo "  gpu-stats         Aktuelle GPU-Auslastung anzeigen"
     echo "  api-health        Überprüfe, ob die Ollama API erreichbar ist"
+    echo "  pull MODEL        Modell herunterladen"
     echo
     echo "Optionen:"
     echo "  -h, --help        Diese Hilfe anzeigen"
@@ -97,7 +98,8 @@ start_port_forwarding() {
 
 # API-Gesundheitscheck
 check_api_health() {
-    if curl -s "http://localhost:$LOCAL_PORT/api/tags" | grep -q "models"; then
+    API_RESPONSE=$(curl -s "http://localhost:$LOCAL_PORT/api/tags" 2>/dev/null)
+    if [ -n "$API_RESPONSE" ] && [[ "$API_RESPONSE" == *"models"* ]]; then
         echo "✅ Ollama API ist erreichbar und funktioniert."
         return 0
     else
@@ -106,13 +108,78 @@ check_api_health() {
     fi
 }
 
+# Parse Modelle ohne jq
+parse_models_without_jq() {
+    local json="$1"
+    
+    # Extrahiere den models-Array (sehr einfach, nicht robust)
+    local models_section=$(echo "$json" | grep -o '"models":\[.*\]' | sed 's/"models"://')
+    
+    # Extrahiere die Namen mit einfacher Regex-Suche
+    echo "$models_section" | grep -o '"name":"[^"]*"' | sed 's/"name":"//g' | sed 's/"//g'
+}
+
+# Hole verfügbare Modelle
+get_models() {
+    local response=$(curl -s "http://localhost:$LOCAL_PORT/api/tags" 2>/dev/null)
+    
+    if [ -z "$response" ]; then
+        echo "Fehler: Keine Antwort von der API."
+        return 1
+    fi
+    
+    # Versuche mit jq zu parsen, falls verfügbar
+    if command -v jq &> /dev/null; then
+        echo "$response" | jq -r '.models[] | "\(.name) (\(.size // "unbekannt"))"' 2>/dev/null
+    else
+        # Fallback ohne jq
+        echo "Modelle (ohne Größenangabe, da jq nicht installiert ist):"
+        parse_models_without_jq "$response"
+    fi
+}
+
+# Testfunktion für die Inferenz
+run_inference_test() {
+    local model="$1"
+    local prompt="$2"
+    
+    echo "Starte Inferenz mit Modell '$model'..."
+    echo "Prompt: $prompt"
+    echo
+    
+    # Führe Inferenz-Test durch
+    START_TIME=$(date +%s.%N)
+    local response=$(curl -s "http://localhost:$LOCAL_PORT/api/generate" \
+        -d "{\"model\":\"$model\",\"prompt\":\"$prompt\",\"stream\":false}" 2>/dev/null)
+    END_TIME=$(date +%s.%N)
+    
+    # Berechne Dauer
+    DURATION=$(echo "$END_TIME - $START_TIME" | bc)
+    
+    # Zeige Antwort an
+    if [ -z "$response" ]; then
+        echo "Keine Antwort von der API erhalten."
+        return 1
+    fi
+    
+    # Extrahiere die Antwort
+    if command -v jq &> /dev/null; then
+        echo "$response" | jq -r '.response' 2>/dev/null
+    else
+        # Extrahiere die Antwort ohne jq (einfach, nicht robust)
+        echo "$response" | grep -o '"response":"[^"]*"' | sed 's/"response":"//g' | sed 's/"//g'
+    fi
+    
+    echo
+    echo "Inferenz-Dauer: $DURATION Sekunden"
+}
+
 # Hauptlogik basierend auf dem Befehl
 case "$COMMAND" in
     list)
         start_port_forwarding
         echo "=== Verfügbare Modelle ==="
-        curl -s "http://localhost:$LOCAL_PORT/api/tags" | jq -r '.models[] | "\(.name) (\(.size))"' || \
-            echo "Fehler beim Abrufen der Modelle. Ist jq installiert?"
+        get_models
         ;;
         
     test)
@@ -125,20 +192,7 @@ case "$COMMAND" in
         
         start_port_forwarding
         echo "=== Inferenz-Test mit Modell '$MODEL_NAME' ==="
-        echo "Prompt: $CUSTOM_PROMPT"
-        echo 
-        
-        # Führe Inferenz-Test durch
-        START_TIME=$(date +%s.%N)
-        curl -s "http://localhost:$LOCAL_PORT/api/generate" \
-            -d "{\"model\":\"$MODEL_NAME\",\"prompt\":\"$CUSTOM_PROMPT\",\"stream\":false}" | \
-            jq -r '.response'
-        END_TIME=$(date +%s.%N)
-        
-        # Berechne Dauer
-        DURATION=$(echo "$END_TIME - $START_TIME" | bc)
-        echo 
-        echo "Inferenz-Dauer: $DURATION Sekunden"
+        run_inference_test "$MODEL_NAME" "$CUSTOM_PROMPT"
         ;;
         
     benchmark)
@@ -154,6 +208,7 @@ case "$COMMAND" in
         echo "Führe 3 Inferenz-Tests durch und messe die Zeit..."
         
         # Führe mehrere Tests durch
+        declare -a TIMES
         for i in {1..3}; do
             echo -e "\n--- Test $i ---"
             START_TIME=$(date +%s.%N)
@@ -189,6 +244,27 @@ case "$COMMAND" in
     api-health)
         start_port_forwarding
         check_api_health
+        ;;
+        
+    pull)
+        if [ $# -lt 1 ]; then
+            echo "Fehler: Kein Modellname angegeben."
+            echo "Verwendung: $0 pull <modellname>"
+            exit 1
+        fi
+        MODEL_NAME=$1
+        
+        POD_NAME=$(kubectl -n "$NAMESPACE" get pod -l service=ollama -o jsonpath='{.items[0].metadata.name}')
+        if [ -z "$POD_NAME" ]; then
+            echo "Fehler: Konnte keinen laufenden Ollama Pod finden."
+            exit 1
+        fi
+        
+        echo "Starte den Download von Modell '$MODEL_NAME' im Pod '$POD_NAME'..."
+        kubectl -n "$NAMESPACE" exec "$POD_NAME" -- ollama pull "$MODEL_NAME"
+        
+        echo -e "\nModell '$MODEL_NAME' wurde heruntergeladen."
+        echo "Sie können es jetzt über die WebUI oder die Ollama API verwenden."
         ;;
         
     *)

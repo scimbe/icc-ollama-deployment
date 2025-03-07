@@ -62,11 +62,30 @@ kubectl -n "$NAMESPACE" exec "$POD_NAME" -- bash -c 'ls -la /usr/local/cuda 2>/d
 echo -e "\n=== Verfügbare Modelle ==="
 kubectl -n "$NAMESPACE" exec "$POD_NAME" -- ollama list || echo "Keine Modelle gefunden oder Befehl fehlgeschlagen."
 
-# Teste die Ollama-API
+# Teste die Ollama-API direkt vom lokalen System aus
 echo -e "\n=== Ollama API Test ==="
-kubectl -n "$NAMESPACE" exec "$POD_NAME" -- curl -s http://localhost:11434/api/tags | grep -q "models" && \
-    echo "✅ Ollama API funktioniert korrekt." || \
+# Starte temporäres Port-Forwarding
+PORT_FWD_PID=""
+cleanup() {
+    if [ -n "$PORT_FWD_PID" ]; then
+        kill $PORT_FWD_PID 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+echo "Starte temporäres Port-Forwarding für API-Test..."
+kubectl -n "$NAMESPACE" port-forward "svc/$OLLAMA_SERVICE_NAME" 11434:11434 &>/dev/null &
+PORT_FWD_PID=$!
+sleep 2
+
+# Prüfe, ob der Ollama-Server API-Anfragen beantwortet
+if curl -s http://localhost:11434/api/tags 2>/dev/null | grep -q "models"; then
+    echo "✅ Ollama API funktioniert korrekt."
+else
     echo "❌ Ollama API antwortet nicht wie erwartet."
+    echo "Dies kann daran liegen, dass curl im Container nicht installiert ist."
+    echo "Die API-Funktionalität kann dennoch korrekt sein."
+fi
 
 # Optional: Einfacher Inferenztest mit einem vorhandenen Modell
 echo -e "\n=== GPU-Inferenztest (optional) ==="
@@ -74,7 +93,8 @@ read -p "Möchten Sie einen GPU-Inferenztest durchführen? (j/N) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Jj]$ ]]; then
     # Liste verfügbare Modelle
-    MODELS=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- ollama list -j 2>/dev/null | grep "name" | awk -F'"' '{print $4}')
+    MODELS_OUTPUT=$(kubectl -n "$NAMESPACE" exec "$POD_NAME" -- ollama list 2>/dev/null)
+    MODELS=$(echo "$MODELS_OUTPUT" | grep -v NAME | awk '{print $1}')
     
     if [ -z "$MODELS" ]; then
         echo "Keine Modelle für den Inferenztest verfügbar. Bitte laden Sie zuerst ein Modell mit:"

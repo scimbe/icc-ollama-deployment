@@ -13,6 +13,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [Schnellstart](#schnellstart)
 - [Detaillierte Anleitung](#detaillierte-anleitung)
 - [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
+- [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
 - [Architektur](#architektur)
 - [Troubleshooting](#troubleshooting)
 - [Wartung](#wartung)
@@ -57,6 +58,9 @@ cd icc-ollama-deployment
 cp configs/config.example.sh configs/config.sh
 vim configs/config.sh  # Passen Sie Ihre Namespace-Informationen an
 
+# Ausführungsberechtigungen für Skripte setzen
+./scripts/set-permissions.sh
+
 # Deployment ausführen
 ./deploy.sh
 ```
@@ -85,6 +89,76 @@ Um die Performance zu optimieren oder größere Modelle zu unterstützen, könne
 
 Weitere Details zur GPU-Skalierung finden Sie in der [ausführlichen Dokumentation](DOCUMENTATION.md#7-gpu-ressourcen-skalieren).
 
+## GPU-Testen und Überwachen
+
+Das Projekt enthält verschiedene Skripte zum Testen, Überwachen und Benchmarken der GPU-Funktionalität:
+
+### GPU-Funktionalität testen
+
+Überprüfen Sie, ob die GPU korrekt eingerichtet ist und von Ollama genutzt wird:
+
+```bash
+./scripts/test-gpu.sh
+# oder
+make gpu-test
+```
+
+### GPU-Auslastung überwachen
+
+Überwachen Sie die GPU-Auslastung in Echtzeit:
+
+```bash
+./scripts/monitor-gpu.sh
+# oder
+make gpu-monitor
+```
+
+Mit Optionen für kontinuierliche Überwachung oder CSV-Export:
+
+```bash
+# 10 Messungen im 5-Sekunden-Intervall
+./scripts/monitor-gpu.sh -i 5 -c 10
+
+# Kompakte Ausgabe mit CSV-Export
+./scripts/monitor-gpu.sh -f compact -s gpu_metrics.csv
+```
+
+### GPU-Benchmarks durchführen
+
+Führen Sie Leistungstests für ein spezifisches Modell durch:
+
+```bash
+./scripts/benchmark-gpu.sh llama3:8b
+# oder
+make gpu-bench MODEL=llama3:8b
+```
+
+### GPU-Kompatibilität prüfen
+
+Überprüfen Sie die vollständige GPU-Konfiguration und -Kompatibilität:
+
+```bash
+./scripts/check-gpu-compatibility.sh
+# oder
+make gpu-compat
+```
+
 ## Architektur
 
 Einen Überblick über die Systemarchitektur und die Komponenten des Projekts finden Sie in der [ARCHITECTURE.md](ARCHITECTURE.md) Datei.
+
+## Troubleshooting
+
+Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
+
+1. Überprüfen Sie die GPU-Kompatibilität: `make gpu-compat`
+2. Testen Sie die GPU-Funktionalität: `make gpu-test`
+3. Überprüfen Sie die Deployment-Konfiguration: `kubectl -n $NAMESPACE get deployment $OLLAMA_DEPLOYMENT_NAME -o yaml`
+4. Prüfen Sie die Logs des Ollama-Pods: `make logs`
+5. Öffnen Sie eine Shell im Pod: `make shell`
+
+Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#8-fehlerbehebung).
+
+## Wartung
+
+Die neuen GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet.
