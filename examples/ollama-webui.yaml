@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-webui
+  namespace: wXYZ123-default  # Ersetzen Sie dies mit Ihrem Namespace
+  labels:
+    service: ollama-webui
+spec:
+  selector:
+    matchLabels:
+      service: ollama-webui
+  template:
+    metadata:
+      labels:
+        service: ollama-webui
+    spec:
+      containers:
+        - image: ghcr.io/open-webui/open-webui:main
+          name: webui
+          env:
+            - name: OLLAMA_API_BASE_URL
+              value: http://my-ollama:11434/api  # Passen Sie an Ihren Ollama Service Namen an
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-webui
+  namespace: wXYZ123-default  # Ersetzen Sie dies mit Ihrem Namespace
+  labels:
+    service: ollama-webui
+spec:
+  ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    service: ollama-webui
+  type: ClusterIP

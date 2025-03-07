@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ollama-ingress
+  namespace: wXYZ123-default  # Ersetzen Sie dies mit Ihrem Namespace
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: your-domain.informatik.haw-hamburg.de  # Ersetzen Sie mit Ihrer Domain
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: ollama-webui
+            port:
+              number: 8080
+  tls: 
+  - hosts:
+    - your-domain.informatik.haw-hamburg.de  # Ersetzen Sie mit Ihrer Domain
+    secretName: ollama-tls-cert  # Name für das TLS-Secret

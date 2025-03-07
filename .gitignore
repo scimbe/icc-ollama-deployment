@@ -1,0 +1,22 @@
+# Lokale Konfiguration
+configs/config.sh
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Temporäre Dateien
+*.tmp
+*.temp
+
+# Betriebssystem-spezifische Dateien
+.DS_Store
+Thumbsdb
+
+# Editoren und IDEs
+.idea/
+.vscode/
+*.swp
+*~

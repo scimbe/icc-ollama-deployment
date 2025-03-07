@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-ollama
+  namespace: wXYZ123-default  # Ersetzen Sie dies mit Ihrem Namespace
+  labels:
+    service: ollama
+spec:
+  selector:
+    matchLabels:
+      service: ollama
+  template:
+    metadata:
+      labels:
+        service: ollama
+    spec:
+      tolerations:
+        - key: "gpu-tesla-v100"  # Oder "gpu-tesla-v100s" für die leistungsfähigere Variante
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - image: ollama/ollama:latest
+          name: ollama
+          env:
+            - name: PATH
+              value: /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            - name: LD_LIBRARY_PATH
+              value: /usr/local/nvidia/lib:/usr/local/nvidia/lib64
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility
+          ports:
+            - containerPort: 11434
+              protocol: TCP
+          resources:
+            limits:
+              memory: "4Gi"
+              nvidia.com/gpu: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-ollama
+  namespace: wXYZ123-default  # Ersetzen Sie dies mit Ihrem Namespace
+  labels:
+    service: ollama
+spec:
+  ports:
+    - name: http
+      port: 11434
+      protocol: TCP
+      targetPort: 11434
+  selector:
+    service: ollama
+  type: ClusterIP
