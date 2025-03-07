@@ -9,10 +9,10 @@ terraform {
 
 provider "docker" {
   # Linux
-  host = "unix:///var/run/docker.sock"
+  #host = "unix:///var/run/docker.sock"
   
   # macOS
-  # host = "unix:///Users/$USER/.docker/run/docker.sock"
+   host = "unix:///Users/martin/.colima/default/docker.sock"
   
   # Windows
   # host = "npipe:////.//pipe//docker_engine"
@@ -31,7 +31,7 @@ resource "docker_container" "ollama_webui_container" {
   name  = "open-webui"
   ports {
     internal = 8080
-    external = 8080
+    external = 3000
     protocol = "tcp"
   }
   
@@ -47,7 +47,7 @@ resource "docker_container" "ollama_webui_container" {
 
 # Output zur Anzeige der URLs
 output "webui_url" {
-  value = "http://localhost:8080"
+  value = "http://localhost:3000"
   description = "URL zum Zugriff auf die Ollama WebUI"
 }
 
