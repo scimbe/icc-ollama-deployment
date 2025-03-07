@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 ICC_LOGIN_URL="https://icc-login.informatik.haw-hamburg.de/"
-KUBECONFIG_PATH="$HOME/.kube/config"
+KUBECONFIG_PATH="$HOME/.kube/conf"
 
 echo -e "${BLUE}=== ICC Login Helper ===${NC}"
 echo -e "Dieses Skript öffnet die ICC-Login-Seite in Ihrem Standard-Browser."
