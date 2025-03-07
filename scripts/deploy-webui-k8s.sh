@@ -36,6 +36,7 @@ spec:
       labels:
         service: ollama-webui
     spec:
+      dnsPolicy: ClusterFirst
       containers:
         - image: ghcr.io/open-webui/open-webui:main
           name: webui
