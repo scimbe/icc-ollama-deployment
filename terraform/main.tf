@@ -37,8 +37,8 @@ resource "docker_container" "ollama_webui_container" {
   
   # Verbindung zu einem lokalen Ollama-Server oder zum Kubernetes-Service via Port-Forwarding
   env = [
-    "OLLAMA_API_BASE_URL=http://host.docker.internal:11434/api" # Für Docker Desktop auf macOS und Windows
-    # "OLLAMA_API_BASE_URL=http://172.17.0.1:11434/api" # Für standard Docker Bridge Network auf Linux
+    "OLLAMA_BASE_URL=http://localhost:11434/" # Für Docker Desktop auf macOS und Windows
+    # "OLLAMA_BASE_URL=http://172.17.0.1:11434/" # Für standard Docker Bridge Network auf Linux
   ]
   
   # Stellt sicher, dass der Container nach einem Neustart wieder gestartet wird
