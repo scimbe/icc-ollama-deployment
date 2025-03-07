@@ -87,7 +87,8 @@ else
 fi
 
 # Prüfe, ob die Konfigurationsdatei existiert
-if [ -f "$(dirname "$(dirname "$0")))"/configs/config.sh ]; then
+ROOT_DIR="$(dirname "$(dirname "$0")")"
+if [ -f "$ROOT_DIR/configs/config.sh" ]; then
     echo -e "${GREEN}Konfigurationsdatei: OK${NC}"
 else
     echo -e "${RED}Konfigurationsdatei: FEHLT${NC}"
