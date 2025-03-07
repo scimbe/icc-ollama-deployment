@@ -10,8 +10,9 @@ Diese Dokumentation führt Sie durch den gesamten Prozess der Einrichtung und Be
 4. [Open WebUI für Ollama einrichten](#4-open-webui-für-ollama-einrichten)
 5. [Modelle herunterladen und verwenden](#5-modelle-herunterladen-und-verwenden)
 6. [Auf den Dienst zugreifen](#6-auf-den-dienst-zugreifen)
-7. [Fehlerbehebung](#7-fehlerbehebung)
-8. [Ressourcen bereinigen](#8-ressourcen-bereinigen)
+7. [GPU-Ressourcen skalieren](#7-gpu-ressourcen-skalieren)
+8. [Fehlerbehebung](#8-fehlerbehebung)
+9. [Ressourcen bereinigen](#9-ressourcen-bereinigen)
 
 ## 1. ICC-Zugang einrichten
 
@@ -77,6 +78,7 @@ WEBUI_DEPLOYMENT_NAME="ollama-webui"
 WEBUI_SERVICE_NAME="ollama-webui"
 USE_GPU=true  # Auf false setzen, wenn keine GPU benötigt wird
 GPU_TYPE="gpu-tesla-v100"  # Oder "gpu-tesla-v100s" je nach Verfügbarkeit
+GPU_COUNT=1  # Anzahl der GPUs (üblicherweise 1, kann bis zu 4 sein)
 ```
 
 ## 3. Ollama mit GPU-Unterstützung deployen
@@ -157,7 +159,55 @@ Anschließend können Sie die WebUI unter http://localhost:8080 in Ihrem Browser
 
 Wenn Sie Ihren Dienst öffentlich zugänglich machen möchten, folgen Sie der Anleitung in `scripts/create-ingress.sh`. Denken Sie daran, dass Sie ein Impressum und eine Datenschutzerklärung benötigen oder einen passwortgeschützten Zugang einrichten müssen.
 
-## 7. Fehlerbehebung
+## 7. GPU-Ressourcen skalieren
+
+Je nach Anforderung Ihrer Anwendung können Sie die Anzahl der verwendeten GPUs für das Ollama-Deployment dynamisch anpassen. Dies ist besonders nützlich für:
+
+- Verarbeitung größerer Modelle, die mehr GPU-Speicher benötigen
+- Verbesserte Inferenzgeschwindigkeit durch parallele Verarbeitung
+- Freigabe von Ressourcen, wenn sie nicht benötigt werden
+- Teilen von GPU-Ressourcen mit anderen Nutzern auf der ICC
+
+### GPU-Anzahl anpassen
+
+Verwenden Sie das Skalierungsskript, um die Anzahl der GPUs anzupassen:
+
+```bash
+# Skalieren auf 2 GPUs
+./scripts/scale-gpu.sh --count 2
+
+# Zurück auf 1 GPU reduzieren
+./scripts/scale-gpu.sh --count 1
+```
+
+Das Skript führt folgende Aktionen aus:
+1. Zeigt die aktuelle GPU-Konfiguration an
+2. Validiert die angeforderte GPU-Anzahl (1-4, abhängig von der Verfügbarkeit)
+3. Patcht das Deployment, um die neue GPU-Anzahl zu verwenden
+4. Wartet auf den erfolgreichen Abschluss des Rollouts
+
+### Wichtige Hinweise zur GPU-Skalierung
+
+- Die maximale Anzahl von GPUs ist durch die ICC-Ressourcenbeschränkungen und die Verfügbarkeit limitiert
+- Größere Modelle (z.B. llama3:70b) können mehr als eine GPU erfordern
+- Die Skalierung führt zu einem Neustart des Ollama-Pods, was kurzzeitige Ausfallzeiten verursachen kann
+- Änderungen durch `scale-gpu.sh` sind temporär und werden bei einem erneuten Deployment auf die Werte aus der `config.sh` zurückgesetzt
+- Für permanente Änderungen sollten Sie den `GPU_COUNT`-Wert in Ihrer `configs/config.sh` aktualisieren
+
+### Überprüfen der GPU-Nutzung
+
+Nach der Skalierung können Sie die GPU-Nutzung und -Verfügbarkeit überprüfen:
+
+```bash
+# GPU-Funktionalität testen
+./scripts/test-gpu.sh
+
+# Details zum Ressourcenverbrauch anzeigen
+POD_NAME=$(kubectl -n $NAMESPACE get pod -l service=ollama -o jsonpath='{.items[0].metadata.name}')
+kubectl -n $NAMESPACE exec $POD_NAME -- nvidia-smi
+```
+
+## 8. Fehlerbehebung
 
 ### "Connection refused" Fehler bei der WebUI
 
@@ -189,7 +239,7 @@ kubectl -n $NAMESPACE logs <pod-name>
 kubectl -n $NAMESPACE exec -it <pod-name> -- /bin/bash
 ```
 
-## 8. Ressourcen bereinigen
+## 9. Ressourcen bereinigen
 
 Wenn Sie die Deployment entfernen möchten:
 

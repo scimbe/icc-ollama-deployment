@@ -12,7 +12,8 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [ICC-Zugang einrichten](#icc-zugang-einrichten)
 - [Schnellstart](#schnellstart)
 - [Detaillierte Anleitung](#detaillierte-anleitung)
-- [Komponenten](#komponenten)
+- [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
+- [Architektur](#architektur)
 - [Troubleshooting](#troubleshooting)
 - [Wartung](#wartung)
 - [Lizenz](#lizenz)
@@ -69,3 +70,21 @@ make deploy
 ## Detaillierte Anleitung
 
 Eine ausführliche Schritt-für-Schritt-Anleitung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md) Datei.
+
+## GPU-Ressourcen skalieren
+
+Um die Performance zu optimieren oder größere Modelle zu unterstützen, können Sie die Anzahl der GPUs dynamisch anpassen:
+
+```bash
+# Skalieren auf 2 GPUs für verbesserte Performance
+./scripts/scale-gpu.sh --count 2
+
+# Reduzieren auf 1 GPU, wenn nicht alle Ressourcen benötigt werden
+./scripts/scale-gpu.sh --count 1
+```
+
+Weitere Details zur GPU-Skalierung finden Sie in der [ausführlichen Dokumentation](DOCUMENTATION.md#7-gpu-ressourcen-skalieren).
+
+## Architektur
+
+Einen Überblick über die Systemarchitektur und die Komponenten des Projekts finden Sie in der [ARCHITECTURE.md](ARCHITECTURE.md) Datei.
