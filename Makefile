@@ -3,7 +3,7 @@
 # Load configuration
 include configs/config.sh
 
-.PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model
+.PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model list-models
 
 help:
 	@echo "Available commands:"
@@ -21,9 +21,12 @@ help:
 	@echo "  make gpu-bench      - Run GPU benchmarks"
 	@echo "  make gpu-compat     - Check GPU compatibility"
 	@echo ""
+	@echo "Model Management:"
+	@echo "  make pull-model MODEL=llama3:8b   - Pull an Ollama model"
+	@echo "  make list-models                  - List installed models"
+	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make port-forward   - Start port forwarding for Ollama and WebUI"
-	@echo "  make pull-model     - Pull an Ollama model (usage: make pull-model MODEL=llama3:8b)"
 
 deploy: deploy-ollama deploy-webui
 
@@ -80,3 +83,7 @@ pull-model:
 	fi
 	@echo "Pulling model $(MODEL)..."
 	./scripts/pull-model.sh $(MODEL)
+
+list-models:
+	@echo "Listing installed models..."
+	./scripts/list-models.sh
