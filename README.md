@@ -23,7 +23,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 
 - HAW Hamburg infw-Account mit Zugang zur ICC
 - kubectl installiert
-- Terraform installiert (für WebUI-Deployment)
+- (optinal) Terraform installiert (Nur für das lokale WebUI-Deployment)
 - Eine aktive VPN-Verbindung zum HAW-Netz (wenn außerhalb des HAW-Netzes)
 - (Optional) Make installiert für vereinfachte Befehle
 
