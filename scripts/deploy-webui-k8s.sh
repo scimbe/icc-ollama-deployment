@@ -41,7 +41,7 @@ spec:
         - image: ghcr.io/open-webui/open-webui:main
           name: webui
           env:
-            - name: OLLAMA_API_BASE_URL
+            - name: OLLAMA_BASE_URL
               value: http://$OLLAMA_SERVICE_NAME:11434/api
           ports:
             - containerPort: 8080
