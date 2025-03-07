@@ -44,6 +44,10 @@ echo "Überprüfen Sie den Status mit: kubectl -n $NAMESPACE get pods"
 
 # Zeige Anweisungen für den Zugriff
 echo -e "\n=== Zugriff auf die Dienste ==="
+echo "WICHTIG: Sie müssen zuerst ein Modell laden, bevor die WebUI funktioniert!"
+echo "Laden Sie ein Modell mit:"
+echo "  ./scripts/pull-model.sh llama3:8b"
+echo 
 echo "Um auf Ollama zuzugreifen, führen Sie aus:"
 echo "  kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434"
 echo -e "\nUm auf die WebUI zuzugreifen, führen Sie in einem anderen Terminal aus:"

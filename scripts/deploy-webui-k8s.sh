@@ -47,7 +47,7 @@ spec:
               protocol: TCP
           resources:
             limits:
-              memory: "512Mi"
+              memory: "2Gi"
               cpu: "500m"
 ---
 apiVersion: v1
@@ -81,3 +81,10 @@ kubectl -n "$NAMESPACE" rollout status deployment/"$WEBUI_DEPLOYMENT_NAME" --tim
 
 echo "WebUI Deployment erfolgreich."
 echo "Service erreichbar über: $WEBUI_SERVICE_NAME:8080"
+echo
+echo "WICHTIGER HINWEIS: Die WebUI funktioniert erst, nachdem mindestens ein Modell geladen wurde."
+echo "Laden Sie ein Modell mit dem folgenden Befehl:"
+echo "  ./scripts/pull-model.sh llama3:8b"
+echo "oder wählen Sie ein anderes verfügbares Modell."
+echo
+echo "Detaillierte Anweisungen finden Sie in der DOCUMENTATION.md unter Abschnitt 6."

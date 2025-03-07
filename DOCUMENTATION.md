@@ -8,8 +8,8 @@ Diese Dokumentation führt Sie durch den gesamten Prozess der Einrichtung und Be
 2. [Repository klonen und konfigurieren](#2-repository-klonen-und-konfigurieren)
 3. [Ollama mit GPU-Unterstützung deployen](#3-ollama-mit-gpu-unterstützung-deployen)
 4. [Open WebUI für Ollama einrichten](#4-open-webui-für-ollama-einrichten)
-5. [Auf den Dienst zugreifen](#5-auf-den-dienst-zugreifen)
-6. [Modelle herunterladen und verwenden](#6-modelle-herunterladen-und-verwenden)
+5. [Modelle herunterladen und verwenden](#5-modelle-herunterladen-und-verwenden)
+6. [Auf den Dienst zugreifen](#6-auf-den-dienst-zugreifen)
 7. [Fehlerbehebung](#7-fehlerbehebung)
 8. [Ressourcen bereinigen](#8-ressourcen-bereinigen)
 
@@ -110,11 +110,37 @@ terraform init
 terraform apply
 ```
 
-## 5. Auf den Dienst zugreifen
+## 5. Modelle herunterladen und verwenden
+
+**WICHTIG: Die WebUI funktioniert erst, nachdem mindestens ein Modell geladen wurde!** Wenn Sie versuchen, auf die WebUI zuzugreifen, bevor ein Modell geladen ist, werden Sie möglicherweise Verbindungsfehler erhalten.
+
+Nachdem Ollama läuft, laden Sie ein Modell wie folgt:
+
+```bash
+# Mit unserem Hilfsskript (empfohlen)
+./scripts/pull-model.sh llama3:8b
+```
+
+Andere beliebte Modelle, die Sie laden könnten:
+- `./scripts/pull-model.sh gemma:2b` (kleines Modell, gut für Tests)
+- `./scripts/pull-model.sh phi3:mini` (kompaktes Modell)
+- `./scripts/pull-model.sh mistral:7b-instruct-v0.2` (gutes Allzweckmodell)
+
+Sie können ein Modell auch manuell herunterladen, wenn Sie bereits Port-Forwarding aktiviert haben:
+
+```bash
+# Stellen Sie zuerst sicher, dass Port-Forwarding aktiv ist
+kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434
+
+# In einem anderen Terminal
+curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3:8b"}'
+```
+
+## 6. Auf den Dienst zugreifen
 
 ### Innerhalb des HAW-Netzes
 
-Um auf Ihren Dienst zuzugreifen, können Sie Port-Forwarding nutzen:
+Nachdem Sie mindestens ein Modell geladen haben, können Sie auf die Dienste zugreifen:
 
 ```bash
 # Für Ollama API und WebUI gleichzeitig (empfohlen)
@@ -131,21 +157,13 @@ Anschließend können Sie die WebUI unter http://localhost:8080 in Ihrem Browser
 
 Wenn Sie Ihren Dienst öffentlich zugänglich machen möchten, folgen Sie der Anleitung in `scripts/create-ingress.sh`. Denken Sie daran, dass Sie ein Impressum und eine Datenschutzerklärung benötigen oder einen passwortgeschützten Zugang einrichten müssen.
 
-## 6. Modelle herunterladen und verwenden
-
-Nachdem Ollama läuft, können Sie Modelle herunterladen:
-
-```bash
-# Mit unserem Hilfsskript (empfohlen)
-./scripts/pull-model.sh llama3:8b
-
-# Oder manuell via curl
-curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3:8b"}'
-```
-
-Oder über die WebUI, falls Sie diese installiert haben.
-
 ## 7. Fehlerbehebung
+
+### "Connection refused" Fehler bei der WebUI
+
+Wenn Sie beim Zugriff auf die WebUI Fehler wie "connection refused" erhalten, überprüfen Sie:
+1. Ist mindestens ein Modell geladen? Die WebUI funktioniert erst, nachdem ein Modell geladen wurde.
+2. Führen Sie `./scripts/pull-model.sh llama3:8b` aus und versuchen Sie es erneut.
 
 ### GPU-Funktionalität testen
 
