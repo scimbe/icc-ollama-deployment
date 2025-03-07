@@ -14,6 +14,7 @@ export WEBUI_SERVICE_NAME="ollama-webui"
 export USE_GPU=true  # Auf false setzen, wenn keine GPU benötigt wird
 export GPU_TYPE="gpu-tesla-v100"  # Oder "gpu-tesla-v100s" je nach Verfügbarkeit
 export GPU_COUNT=1  # Anzahl der GPUs (normalerweise 1)
+export GPU_FORMAT="standard"  # Verwenden Sie "extended" für erweiterte Syntax, wenn Standard nicht funktioniert
 
 # Ressourcenlimits
 export MEMORY_LIMIT="4Gi"  # Speicherlimit

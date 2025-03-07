@@ -26,8 +26,9 @@ if [ "$USE_GPU" == "true" ]; then
           operator: \"Exists\"
           effect: \"NoSchedule\""
     
+    # Korrekte Syntax für GPU-Ressourcen in der ICC
     GPU_RESOURCES="
-            nvidia.com/gpu: $GPU_COUNT"
+              nvidia.com/gpu: $GPU_COUNT"
     
     GPU_ENV="
             - name: PATH
@@ -91,6 +92,10 @@ EOF
 
 # Anwenden der Konfiguration
 echo "Deploying Ollama to namespace $NAMESPACE..."
+echo "Verwendete Konfiguration:"
+cat "$TMP_FILE"
+echo "---------------------------------"
+
 kubectl apply -f "$TMP_FILE"
 
 # Aufräumen
