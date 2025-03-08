@@ -47,8 +47,7 @@ spec:
           mountPath: /usr/share/kibana/data
       volumes:
       - name: kibana-data
-        persistentVolumeClaim:
-          claimName: kibana-data-pvc
+        emptyDir: {}  # Verwendung von emptyDir statt PersistentVolumeClaim
 ---
 apiVersion: v1
 kind: Service
@@ -64,15 +63,3 @@ spec:
     targetPort: 5601
   selector:
     app: kibana
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: kibana-data-pvc
-  namespace: ${NAMESPACE}
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi

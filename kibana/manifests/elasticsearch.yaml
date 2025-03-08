@@ -57,14 +57,9 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /usr/share/elasticsearch/data
-  volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: ${ES_STORAGE_SIZE}
+      volumes:
+      - name: data
+        emptyDir: {}  # Verwendung von emptyDir statt PersistentVolumeClaim
 ---
 apiVersion: v1
 kind: Service
