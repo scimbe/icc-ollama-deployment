@@ -4,7 +4,7 @@ const { Client } = require('@elastic/elasticsearch');
 // Konfiguration über Umgebungsvariablen
 const ELASTICSEARCH_HOST = process.env.ELASTICSEARCH_HOST || 'http://localhost:9200';
 const OLLAMA_API_URL = process.env.OLLAMA_API_URL || 'http://localhost:11434/v1/chat/completions';
-const MODEL_NAME = process.env.MODEL_NAME || 'llama3';
+const MODEL_NAME = process.env.MODEL_NAME || 'phi4';
 const INDEX_NAME = process.env.INDEX_NAME || 'ollama-responses';
 
 // Elasticsearch-Client konfigurieren
