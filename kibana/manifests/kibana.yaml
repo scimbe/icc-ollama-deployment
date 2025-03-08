@@ -32,10 +32,10 @@ spec:
         env:
         - name: ELASTICSEARCH_HOSTS
           value: "http://${ES_SERVICE_NAME}:9200"
-        - name: ELASTICSEARCH_USERNAME
-          value: "elastic"
-        - name: ELASTICSEARCH_PASSWORD
-          value: "changeme"  # In Produktion: Secret verwenden
+        - name: XPACK_SECURITY_ENABLED
+          value: "false"  # Sicherheit deaktivieren, passend zu Elasticsearch
+        - name: ELASTICSEARCH_SSL_VERIFICATIONMODE
+          value: "none"
         - name: XPACK_SECURITY_ENCRYPTIONKEY
           value: "somesuperlongkeyatleast32characters"  # In Produktion: Secret verwenden
         - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY

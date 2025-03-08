@@ -42,17 +42,17 @@ echo "Warte, bis Elasticsearch bereit ist..."
 kubectl -n "$NAMESPACE" port-forward "svc/$ES_SERVICE_NAME" 9200:9200 &
 PF_PID=$!
 
-# Warte auf Elasticsearch
-sleep 10
+# Warte länger auf Elasticsearch (besonders für langsamere Systeme)
+sleep 30
 
 # Setup für ML-Modelle
 echo "Initialisiere ML-Funktionalität..."
-curl -u elastic:changeme -X POST "http://localhost:9200/_ml/set_upgrade_mode?enabled=false" -H "Content-Type: application/json"
+curl -X POST "http://localhost:9200/_ml/set_upgrade_mode?enabled=false" -H "Content-Type: application/json"
 
 # Lade Embedding-Modell
 if [ "$ENABLE_RAG" = "true" ]; then
     echo "Lade Embedding-Modell $EMBEDDING_MODEL..."
-    curl -u elastic:changeme -X POST "http://localhost:9200/_inference/text_embedding/$EMBEDDING_MODEL" \
+    curl -X POST "http://localhost:9200/_inference/text_embedding/$EMBEDDING_MODEL" \
         -H "Content-Type: application/json" \
         -d '{
             "input": "Test embedding model initialization"

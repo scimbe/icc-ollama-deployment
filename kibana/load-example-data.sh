@@ -78,7 +78,6 @@ sleep 5
 # Erstelle den Index
 echo "Erstelle Index 'rag-demo' mit Vektorsuche..."
 curl -X PUT "http://localhost:9200/rag-demo" \
-  -u "elastic:changeme" \
   -H "Content-Type: application/json" \
   -d @"$TMP_INDEX_FILE"
 
@@ -99,7 +98,6 @@ for (( i=0; i<TEXT_LENGTH; i+=CHUNK_SIZE )); do
   
   # Füge den Chunk zum Index hinzu
   curl -X POST "http://localhost:9200/rag-demo/_doc/$DOC_ID" \
-    -u "elastic:changeme" \
     -H "Content-Type: application/json" \
     -d @"$TMP_DOC"
   
@@ -109,7 +107,7 @@ done
 
 # Erzwinge Aktualisierung des Index für sofortige Suche
 curl -X POST "http://localhost:9200/rag-demo/_refresh" \
-  -u "elastic:changeme"
+  -H "Content-Type: application/json"
   
 # Aufräumen
 kill $PF_PID

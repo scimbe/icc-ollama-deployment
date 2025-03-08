@@ -47,11 +47,13 @@ spec:
         - name: ES_JAVA_OPTS
           value: "-Xms512m -Xmx512m"
         - name: xpack.security.enabled
-          value: "true"
-        - name: xpack.security.transport.ssl.enabled
+          value: "false"  # Sicherheit deaktivieren, um Bootstrapprüfungen zu umgehen
+        - name: bootstrap.memory_lock
           value: "false"
+        - name: discovery.type
+          value: "single-node"  # Single-Node-Modus für einfachere Konfiguration
         - name: ELASTIC_PASSWORD
-          value: "changeme"  # In Produktion: Secret verwenden
+          value: "changeme"
         - name: xpack.ml.enabled
           value: "true"
         volumeMounts:
