@@ -46,7 +46,7 @@ mkdir -p ~/.kube
 mv /pfad/zur/heruntergeladenen/config.txt ~/.kube/conf # bei mir funktioniert conf -> ich habe andere Anleitungen mit config gesehen
 
 # Oder als Umgebungsvariable
-export KUBECONFIG=/pfad/zur/heruntergeladenen/config.txt
+export KUBECONFIG=/pfad/zur/heruntergeladenen/conf
 ```
 
 ### Überprüfen Sie Ihren Namespace
