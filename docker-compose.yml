@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # Elasticsearch-Service
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # Kibana-Service
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    container_name: kibana
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+      - NODE_OPTIONS=--max-old-space-size=768
+    ports:
+      - "5601:5601"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # Ollama-Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+              driver: nvidia
+              count: all
+              device_ids: ['0']
+
+  # RAG Gateway (kostenlose Alternative zum ES-Enterprise-Connector)
+  rag-gateway:
+    build:
+      context: ./rag-gateway
+      dockerfile: Dockerfile
+    container_name: rag-gateway
+    depends_on:
+      - elasticsearch
+      - ollama
+    environment:
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200
+      - OLLAMA_API_URL=http://ollama:11434/api
+      - OLLAMA_MODEL=llama3
+      - INDEX_NAME=ollama-responses
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    networks:
+      - rag-network
+    volumes:
+      - rag_gateway_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  es_data:
+    driver: local
+  ollama_data:
+    driver: local
+  rag_gateway_data:
+    driver: local
