@@ -3,7 +3,7 @@
 # Load configuration
 include configs/config.sh
 
-.PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model list-models
+.PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model list-models deploy-rag deploy-elasticsearch deploy-kibana test-rag
 
 help:
 	@echo "Available commands:"
@@ -24,6 +24,12 @@ help:
 	@echo "Model Management:"
 	@echo "  make pull-model MODEL=llama3:8b   - Pull an Ollama model"
 	@echo "  make list-models                  - List installed models"
+	@echo ""
+	@echo "RAG with Kibana:"
+	@echo "  make deploy-rag                   - Deploy complete RAG setup (Elasticsearch, Kibana)"
+	@echo "  make deploy-elasticsearch         - Deploy only Elasticsearch"
+	@echo "  make deploy-kibana                - Deploy only Kibana"
+	@echo "  make test-rag                     - Test RAG functionality"
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make port-forward   - Start port forwarding for Ollama and WebUI"
@@ -70,6 +76,23 @@ gpu-bench:
 gpu-compat:
 	@echo "Checking GPU compatibility..."
 	./scripts/check-gpu-compatibility.sh
+
+# RAG with Kibana Commands
+deploy-rag:
+	@echo "Setting up RAG with Kibana..."
+	./scripts/rag-setup.sh
+
+deploy-elasticsearch:
+	@echo "Deploying Elasticsearch..."
+	./kibana/deploy-elasticsearch.sh
+
+deploy-kibana:
+	@echo "Deploying Kibana..."
+	./kibana/deploy-kibana.sh
+
+test-rag:
+	@echo "Testing RAG functionality..."
+	./scripts/test-rag.sh
 
 # Utility Commands
 port-forward:

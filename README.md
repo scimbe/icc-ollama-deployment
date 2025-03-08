@@ -1,10 +1,10 @@
 # ICC Ollama Deployment
 
-Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung auf der HAW Hamburg Informatik Compute Cloud (ICC).
+Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung und RAG-Funktionalität auf der HAW Hamburg Informatik Compute Cloud (ICC).
 
 ## Übersicht
 
-Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt.
+Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt und optionale RAG-Funktionalität (Retrieval-Augmented Generation) mit Elasticsearch und Kibana.
 
 ## Inhaltsverzeichnis
 
@@ -14,6 +14,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [Detaillierte Anleitung](#detaillierte-anleitung)
 - [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
 - [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
+- [RAG mit Kibana](#rag-mit-kibana)
 - [Architektur](#architektur)
 - [Troubleshooting](#troubleshooting)
 - [Wartung](#wartung)
@@ -143,6 +144,61 @@ make gpu-bench MODEL=llama3:8b
 make gpu-compat
 ```
 
+## RAG mit Kibana
+
+Das Projekt unterstützt jetzt Retrieval-Augmented Generation (RAG) mithilfe von Elasticsearch und Kibana.
+
+### RAG-Komponenten einrichten
+
+Die Einrichtung aller RAG-Komponenten erfolgt mit einem einzelnen Befehl:
+
+```bash
+./scripts/rag-setup.sh
+# oder
+make deploy-rag
+```
+
+Dieses Skript:
+1. Deployt Elasticsearch für die Vektorsuche
+2. Deployt Kibana als Frontend
+3. Richtet den Connector zwischen Kibana und Ollama ein
+4. Bietet optional das Laden von Beispieldaten an
+
+### RAG-Funktionalität testen
+
+Um zu überprüfen, ob alle RAG-Komponenten korrekt eingerichtet sind:
+
+```bash
+./scripts/test-rag.sh
+# oder
+make test-rag
+```
+
+### RAG-Workflow verwenden
+
+1. Starten Sie Port-Forwarding für die benötigten Dienste:
+   ```bash
+   kubectl -n $NAMESPACE port-forward svc/$KIBANA_SERVICE_NAME 5601:5601
+   kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434
+   ```
+
+2. Öffnen Sie Kibana im Browser: http://localhost:5601
+   - Melden Sie sich mit den Zugangsdaten an: elastic / changeme
+
+3. Navigieren Sie zu "Elasticsearch > Playground"
+   - Wählen Sie einen Index als Datenquelle (z.B. "rag-demo")
+   - Wählen Sie den Ollama-Connector
+   - Passen Sie den System-Prompt an (optional)
+   - Stellen Sie eine Frage zu den Daten
+
+### Eigene Daten verwenden
+
+Um eigene Daten für RAG zu verwenden, können Sie:
+
+1. Dateien direkt in Kibana hochladen: Elasticsearch > Home > Upload a file
+2. Die Elasticsearch API zum Indizieren von Daten nutzen
+3. Ein eigenes Skript basierend auf `load-example-data.sh` erstellen
+
 ## Architektur
 
 Einen Überblick über die Systemarchitektur und die Komponenten des Projekts finden Sie in der [ARCHITECTURE.md](ARCHITECTURE.md) Datei.
@@ -157,8 +213,14 @@ Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
 4. Prüfen Sie die Logs des Ollama-Pods: `make logs`
 5. Öffnen Sie eine Shell im Pod: `make shell`
 
+Bei Problemen mit RAG:
+1. Überprüfen Sie, ob alle Komponenten laufen: `kubectl -n $NAMESPACE get pods`
+2. Führen Sie den RAG-Test aus: `./scripts/test-rag.sh`
+3. Prüfen Sie, ob mindestens ein Modell in Ollama geladen ist
+4. Überprüfen Sie die Elasticsearch-Indizes: `curl -u elastic:changeme http://localhost:9200/_cat/indices`
+
 Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#8-fehlerbehebung).
 
 ## Wartung
 
-Die neuen GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet.
+Die GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet. Die RAG-Integration mit Elasticsearch und Kibana ermöglicht eine nahtlose Verbindung zwischen Dokumentensuche und lokaler LLM-Inferenz.

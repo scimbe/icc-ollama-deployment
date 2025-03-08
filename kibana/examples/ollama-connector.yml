@@ -1,0 +1,30 @@
+# Beispielkonfiguration für den Ollama-Connector in Kibana
+#
+# Diese Konfiguration ist als Referenz gedacht und muss manuell über die 
+# Kibana-Benutzeroberfläche eingerichtet werden.
+
+connector_name: "Ollama (ICC)"
+connector_type: "openai"
+settings:
+  # Wählen Sie "other (OpenAI Compatible Service)" im Dropdown
+  provider: "other"
+  
+  # URL zum Ollama-Service
+  # Bei Port-Forwarding (Entwicklung): http://localhost:11434/v1/chat/completions
+  # Innerhalb von Kubernetes: http://my-ollama:11434/v1/chat/completions
+  url: "http://my-ollama:11434/v1/chat/completions"
+  
+  # Standard-Modell (muss in Ollama verfügbar sein)
+  # Sie können andere Modelle wählen, z.B. "phi3:mini", "mistral:7b", etc.
+  default_model: "llama3:8b"
+  
+  # Der API-Schlüssel wird von Ollama ignoriert, ist aber für die Connector-Konfiguration erforderlich
+  api_key: "dummy-api-key-for-ollama"
+
+# Standard-RAG-Systemprompt für Kibana Playground
+system_prompt: |
+  Du bist ein hilfreicher KI-Assistent für Frage-Antwort-Aufgaben. 
+  Verwende die folgenden Kontextabschnitte, um die Fragen zu beantworten.
+  Wenn die Antwort nicht in den bereitgestellten Abschnitten gefunden werden kann, 
+  antworte mit "Ich kann diese Frage nicht basierend auf dem Kontext beantworten."
+  Gib die Quellen in deiner Antwort an mit [Quelle: Position X].

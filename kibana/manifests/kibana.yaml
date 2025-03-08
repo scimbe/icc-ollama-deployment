@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${KIBANA_DEPLOYMENT_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
+        resources:
+          limits:
+            memory: ${KIBANA_MEMORY_LIMIT}
+            cpu: "1"
+          requests:
+            memory: "512Mi"
+            cpu: "0.5"
+        ports:
+        - containerPort: 5601
+          name: http
+          protocol: TCP
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://${ES_SERVICE_NAME}:9200"
+        - name: ELASTICSEARCH_USERNAME
+          value: "elastic"
+        - name: ELASTICSEARCH_PASSWORD
+          value: "changeme"  # In Produktion: Secret verwenden
+        - name: XPACK_SECURITY_ENCRYPTIONKEY
+          value: "somesuperlongkeyatleast32characters"  # In Produktion: Secret verwenden
+        - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+          value: "somesuperlongkeyatleast32characters"  # In Produktion: Secret verwenden
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=512"
+        volumeMounts:
+        - name: kibana-data
+          mountPath: /usr/share/kibana/data
+      volumes:
+      - name: kibana-data
+        persistentVolumeClaim:
+          claimName: kibana-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${KIBANA_SERVICE_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: kibana
+spec:
+  ports:
+  - port: 5601
+    protocol: TCP
+    targetPort: 5601
+  selector:
+    app: kibana
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kibana-data-pvc
+  namespace: ${NAMESPACE}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
