@@ -5,7 +5,7 @@ set -e
 
 # Pfad zum Skriptverzeichnis
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"  # Nur eine Ebene hoch gehen
 
 # Lade Konfiguration
 if [ -f "$ROOT_DIR/configs/config.sh" ]; then
