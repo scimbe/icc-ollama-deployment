@@ -43,7 +43,7 @@ Falls Sie die manuelle Einrichtung bevorzugen:
 ```bash
 # Linux/macOS
 mkdir -p ~/.kube
-mv /pfad/zur/heruntergeladenen/config.txt ~/.kube/config
+mv /pfad/zur/heruntergeladenen/config.txt ~/.kube/conf # bei mir funktioniert conf -> ich habe andere Anleitungen mit config gesehen
 
 # Oder als Umgebungsvariable
 export KUBECONFIG=/pfad/zur/heruntergeladenen/config.txt
