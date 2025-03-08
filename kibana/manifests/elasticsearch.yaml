@@ -40,18 +40,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: discovery.seed_hosts
-          value: "${ES_SERVICE_NAME}"
-        - name: cluster.initial_master_nodes
-          value: "${ES_DEPLOYMENT_NAME}-0"
+        - name: discovery.type
+          value: "single-node"  # Single-Node-Modus für einfachere Konfiguration
         - name: ES_JAVA_OPTS
           value: "-Xms512m -Xmx512m"
         - name: xpack.security.enabled
           value: "false"  # Sicherheit deaktivieren, um Bootstrapprüfungen zu umgehen
         - name: bootstrap.memory_lock
           value: "false"
-        - name: discovery.type
-          value: "single-node"  # Single-Node-Modus für einfachere Konfiguration
         - name: ELASTIC_PASSWORD
           value: "changeme"
         - name: xpack.ml.enabled
