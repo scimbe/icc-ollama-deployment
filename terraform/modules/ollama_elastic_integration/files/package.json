@@ -1,0 +1,24 @@
+{
+  "name": "ollama-elastic-integration",
+  "version": "1.0.0",
+  "description": "Integration zwischen Ollama und Elasticsearch für RAG-Anwendungen",
+  "main": "ollama-elastic-integration.js",
+  "scripts": {
+    "start": "node ollama-elastic-integration.js",
+    "rag": "node ollama-elastic-integration.js --rag",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ollama",
+    "elasticsearch",
+    "rag",
+    "llm",
+    "kibana"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.10.0",
+    "axios": "^1.6.2"
+  }
+}

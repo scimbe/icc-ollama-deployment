@@ -20,7 +20,7 @@ spec:
         image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
         resources:
           limits:
-            memory: ${KIBANA_MEMORY_LIMIT}
+            memory: "1Gi"
             cpu: "1"
           requests:
             memory: "512Mi"
@@ -33,21 +33,40 @@ spec:
         - name: ELASTICSEARCH_HOSTS
           value: "http://${ES_SERVICE_NAME}:9200"
         - name: XPACK_SECURITY_ENABLED
-          value: "false"  # Sicherheit deaktivieren, passend zu Elasticsearch
+          value: "false"
         - name: ELASTICSEARCH_SSL_VERIFICATIONMODE
           value: "none"
         - name: XPACK_SECURITY_ENCRYPTIONKEY
-          value: "somesuperlongkeyatleast32characters"  # In Produktion: Secret verwenden
+          value: "somesuperlongkeyatleast32characters"
         - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
-          value: "somesuperlongkeyatleast32characters"  # In Produktion: Secret verwenden
+          value: "somesuperlongkeyatleast32characters"
         - name: NODE_OPTIONS
-          value: "--max-old-space-size=512"
+          value: "--max-old-space-size=768"
+        # Remove explicit username to use default anonymous access since security is disabled
+        # - name: ELASTICSEARCH_USERNAME
+        #  value: "elastic"
+        # - name: ELASTICSEARCH_PASSWORD
+        #  value: "changeme"
+        - name: XPACK_REPORTING_ENABLED
+          value: "false"
+        - name: LOGGING_VERBOSE
+          value: "true"
+        - name: SERVER_MAXPAYLOADBYTES
+          value: "10485760"
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5601
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         volumeMounts:
         - name: kibana-data
           mountPath: /usr/share/kibana/data
       volumes:
       - name: kibana-data
-        emptyDir: {}  # Verwendung von emptyDir statt PersistentVolumeClaim
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

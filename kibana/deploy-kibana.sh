@@ -15,6 +15,42 @@ else
     exit 1
 fi
 
+# Prüfe, ob Elasticsearch läuft
+echo "Prüfe, ob Elasticsearch bereit ist..."
+ES_READY=false
+for i in {1..5}; do
+    if kubectl -n "$NAMESPACE" get pod -l app=elasticsearch -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        ES_READY=true
+        break
+    fi
+    echo "Warte auf Elasticsearch (Versuch $i/5)..."
+    sleep 10
+done
+
+if [ "$ES_READY" = "false" ]; then
+    echo "Warnung: Elasticsearch scheint nicht zu laufen. Stellen Sie sicher, dass es korrekt deployed ist."
+    echo "Sie können es mit folgendem Befehl überprüfen:"
+    echo "kubectl -n $NAMESPACE get pod -l app=elasticsearch"
+    
+    read -p "Möchten Sie trotzdem mit dem Kibana-Deployment fortfahren? (j/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+        echo "Deployment abgebrochen."
+        exit 1
+    fi
+fi
+
+# Prüfe, ob ein bestehendes Kibana-Deployment existiert
+if kubectl -n "$NAMESPACE" get deployment "$KIBANA_DEPLOYMENT_NAME" &> /dev/null; then
+    echo "Bestehendes Kibana-Deployment gefunden."
+    echo "Lösche es für einen sauberen Neustart..."
+    kubectl -n "$NAMESPACE" delete deployment "$KIBANA_DEPLOYMENT_NAME"
+    
+    # Kurz warten bis das Deployment gelöscht ist
+    echo "Warte auf Löschen des Deployments..."
+    sleep 5
+fi
+
 # Erstelle temporäre YAML-Datei für das Deployment
 TMP_FILE=$(mktemp)
 
@@ -33,7 +69,7 @@ kubectl apply -f "$TMP_FILE"
 rm "$TMP_FILE"
 
 # Warte auf das Deployment
-echo "Warte auf das Kibana Deployment..."
+echo "Warte auf das Kibana Deployment (kann einige Minuten dauern)..."
 kubectl -n "$NAMESPACE" rollout status deployment/"$KIBANA_DEPLOYMENT_NAME" --timeout=300s
 
 echo "Kibana Deployment erfolgreich."
