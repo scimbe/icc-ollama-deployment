@@ -105,7 +105,7 @@ Sie haben zwei Möglichkeiten, die WebUI zu deployen:
 ./scripts/deploy-webui-k8s.sh
 ```
 
-### Option 2: Mit Terraform (für lokale Entwicklung)
+### Option 2: Mit Terraform (für lokale Webui, braucht docker)
 
 ```bash
 cd terraform
