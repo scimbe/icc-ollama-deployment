@@ -102,7 +102,7 @@ make gpu-test
 make gpu-monitor
 ```
 
-Mit Optionen für kontinuierliche Überwachung oder CSV-Export:
+Mit Optionen für kontinuierliche Überwachung:
 
 ```bash
 # 10 Messungen im 5-Sekunden-Intervall
