@@ -1,12 +1,27 @@
 # Ollama Installation und Dokumentation
 
-Diese Repository-Dokumentation wurde zur besseren Übersichtlichkeit in zwei spezifische Dokumente aufgeteilt:
+
+Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung und Modellanpassung auf der HAW Hamburg Informatik Compute Cloud (ICC).
+
 
 - **[DEFAULT-README.md](DEFAULT-README.md)**: Beinhaltet die standardmäßige Installation und Nutzung von Ollama ohne RAG-Integration.
 
-- **[RAG-README.md](RAG-README.md)**: Umfasst detaillierte Informationen zur erweiterten Installation und Konfiguration von Ollama in Verbindung mit Retrieval-Augmented Generation (RAG).
+Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt sowie Funktionen zur Anpassung der Modelle an spezifische Anwendungsfälle.
 
-Bitte wähle die für dich relevante Installationsanleitung gemäß deinem Einsatzzweck aus.
+## Inhaltsverzeichnis
+
+- [Voraussetzungen](#voraussetzungen)
+- [ICC-Zugang einrichten](#icc-zugang-einrichten)
+- [Schnellstart](#schnellstart)
+- [Detaillierte Anleitung](#detaillierte-anleitung)
+- [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
+- [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
+- [Modellanpassung und Finetuning](#modellanpassung-und-finetuning) 👈 **NEU!**
+- [Architektur](#architektur)
+- [Troubleshooting](#troubleshooting)
+- [Wartung](#wartung)
+- [Lizenz](#lizenz)
+
 
 ## Voraussetzungen
 
@@ -15,6 +30,7 @@ Bitte wähle die für dich relevante Installationsanleitung gemäß deinem Einsa
 - (Optional) Terraform installiert (Nur für das lokale WebUI-Deployment)
 - Eine aktive VPN-Verbindung zum HAW-Netz (wenn außerhalb des HAW-Netzes)
 - (Optional) Make installiert für vereinfachte Befehle
+- (Optional) IntelliJ IDEA für die erweiterte IDE-Integration
 
 ## ICC-Zugang einrichten
 
@@ -25,7 +41,7 @@ Bevor Sie beginnen können, müssen Sie sich bei der ICC anmelden und Ihre Kubec
 ./scripts/icc-login.sh
 ```
 
-Dieses Skript:
+Dieses Skript führt Sie durch den gesamten Prozess:
 1. Öffnet die ICC-Login-Seite in Ihrem Standard-Browser
 2. Führt Sie durch den Anmeldeprozess mit Ihrer infw-Kennung
 3. Hilft beim Speichern und Einrichten der heruntergeladenen Kubeconfig-Datei
@@ -129,13 +145,80 @@ make gpu-bench MODEL=llama3:8b
 make gpu-compat
 ```
 
+## Modellanpassung und Finetuning
+
+Das Projekt bietet Möglichkeiten zur Anpassung von Modellen für spezifische Anwendungsfälle:
+
+### Modell anpassen (Finetuning)
+
+Passen Sie ein Modell an Ihre spezifischen Anforderungen an:
+
+```bash
+./scripts/finetune-simple.sh -m llama3:8b -n haw-custom -d examples/haw_training_data.jsonl
+# oder
+make finetune-simple MODEL=llama3:8b NAME=haw-custom DATA=examples/haw_training_data.jsonl
+```
+
+Das Skript führt folgende Schritte aus:
+1. Erstellt ein angepasstes Modell mit HAW-spezifischem Template
+2. Trainiert es mit den angegebenen Trainingsdaten
+3. Macht es als neues Modell verfügbar
+
+### Trainingsdaten vorbereiten
+
+Konvertieren Sie JSONL-Trainingsdaten in verschiedene Formate:
+
+```bash
+./scripts/convert-training-data.sh -i my_data.jsonl -o converted_data.txt -f txt
+# oder
+make convert-training-data INPUT=my_data.jsonl FORMAT=ollama
+```
+
+Unterstützte Formate:
+- `txt`: Einfaches Textformat mit Frage-Antwort-Struktur
+- `md`: Markdown-Format für bessere Lesbarkeit
+- `ollama`: Format optimiert für Ollama-Training
+
+### Templates erstellen
+
+Erstellen Sie benutzerdefinierte Modelfile-Templates für verschiedene Anwendungsfälle:
+
+```bash
+./scripts/create-template.sh -t academic -l de my_template
+# oder
+make create-template TYPE=academic NAME=my_template
+```
+
+Template-Typen:
+- `academic`: Für wissenschaftliche/akademische Anwendungen
+- `chat`: Für konversationelle Assistenten
+- `coding`: Optimiert für Programmierunterstützung
+- `assistance`: Allgemeiner Assistenten-Modus
+
+### Angepasste Modelle testen
+
+Testen Sie Ihre angepassten Modelle mit verschiedenen Prompts:
+
+```bash
+./scripts/test-model.sh haw-custom
+# oder
+make test-model MODEL=haw-custom
+```
+
+Für Batch-Tests mit mehreren Prompts:
+```bash
+./scripts/test-model.sh -b prompts.txt haw-custom
+```
+
+Weitere Details zur Modellanpassung finden Sie in der [ausführlichen Dokumentation](DOCUMENTATION.md#11-modellanpassung-und-finetuning).
+
 ## Architektur
 
 Einen Überblick über die Systemarchitektur und die Komponenten des Projekts finden Sie in der [ARCHITECTURE.md](ARCHITECTURE.md) Datei.
 
 ## Troubleshooting
 
-Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
+Bei Problemen mit der GPU-Funktionalität oder Modellanpassung können folgende Schritte helfen:
 
 1. Überprüfen Sie die GPU-Kompatibilität: `make gpu-compat`
 2. Testen Sie die GPU-Funktionalität: `make gpu-test`
@@ -143,9 +226,9 @@ Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
 4. Prüfen Sie die Logs des Ollama-Pods: `make logs`
 5. Öffnen Sie eine Shell im Pod: `make shell`
 
-Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#8-fehlerbehebung).
+Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#9-fehlerbehebung).
 
 ## Wartung
 
-Die neuen GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet.
+Die Funktionen für GPU-Tests, Monitoring und Modellanpassung ermöglichen ein kontinuierliches Management Ihrer Ollama-Instanz, um sicherzustellen, dass sie optimal mit den verfügbaren Ressourcen arbeitet und an Ihre spezifischen Anforderungen angepasst ist.
 

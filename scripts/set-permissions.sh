@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # Skript zum Setzen der korrekten Ausführungsberechtigungen für alle Skripte
