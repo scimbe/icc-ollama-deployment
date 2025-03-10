@@ -183,6 +183,30 @@ async function retrieveRelevantDocuments(query, maxResults = MAX_RESULTS) {
   }
 }
 
+// Erstellt einen RAG-Kontext mit starker Aufforderung, die Dokumente als Single Point of Truth zu behandeln
+function createSinglePointOfTruthContext(documents) {
+  if (!documents || documents.length === 0) return '';
+
+  // Extraktion der Dokumente
+  const documentContents = documents.map(doc => doc.content).join('\n\n---\n\n');
+  
+  // Erstelle einen Kontext, der dem Modell deutlich macht, dass die Dokumente die höchste Priorität haben
+  return `WICHTIG: Die folgenden Informationen sind als SINGLE POINT OF TRUTH zu betrachten.
+Du MUSST diese Informationen als primäre und zuverlässigste Quelle verwenden und ihnen HÖCHSTE PRIORITÄT geben.
+Informationen aus dem Modelltraining sollen NUR ergänzend eingesetzt werden, falls es Lücken gibt.
+Falls Widersprüche zwischen den folgenden Dokumenten und deinem trainierten Wissen bestehen, 
+MÜSSEN IMMER die Dokumente als korrekt angesehen werden.
+
+AUTORITATIVE DOKUMENTE:
+-----------------------
+${documentContents}
+-----------------------
+
+ANWEISUNG: Beantworte die folgende Frage ausschließlich auf Basis der obigen autoritativen Dokumente.
+Falls diese Dokumente nicht ausreichen, um die Frage zu beantworten, gib dies explizit an.
+`;
+}
+
 // Dokument speichern
 async function saveToElasticsearch(content, metadata = {}) {
   if (!content || content.trim().length === 0) {
@@ -321,22 +345,28 @@ app.post('/api/generate', async (req, res) => {
       return res.status(400).json({ error: 'Prompt ist erforderlich' });
     }
     
-    // RAG-Erweiterung
+    // RAG-Erweiterung mit Single Point of Truth
     const relevantDocs = await retrieveRelevantDocuments(prompt);
+    let enhancedPrompt = prompt;
     let ragContext = '';
+    
     if (relevantDocs.length > 0) {
-      ragContext = 'Hier sind einige relevante Informationen:\n\n' + 
-        relevantDocs.map(doc => doc.content).join('\n\n') + 
-        '\n\nBerücksichtige diese Informationen bei deiner Antwort:';
+      // Erstelle den Single Point of Truth Kontext
+      ragContext = createSinglePointOfTruthContext(relevantDocs);
+      enhancedPrompt = `${ragContext}\n\nFRAGE: ${prompt}`;
     }
     
-    const enhancedPrompt = ragContext ? `${ragContext}\n\n${prompt}` : prompt;
+    // Angepasstes System-Prompt für Single Point of Truth
+    let enhancedSystem = system;
+    if (relevantDocs.length > 0 && system) {
+      enhancedSystem = `${system}\n\nWICHTIG: Betrachte die bereitgestellten Dokumente als Single Point of Truth. Bevorzuge diese Informationen vor allem anderen.`;
+    }
     
     // Anfrage an Ollama
     const ollamaResponse = await makeOllamaRequest(
       enhancedPrompt,
       model || 'phi4',
-      system,
+      enhancedSystem,
       options,
       stream || false,
       temperature || 0.7
@@ -386,24 +416,29 @@ app.post('/api/chat/completions', async (req, res) => {
       return res.status(400).json({ error: 'Keine Benutzernachricht gefunden' });
     }
     
-    // RAG-Erweiterung
+    // RAG-Erweiterung mit Single Point of Truth
     const relevantDocs = await retrieveRelevantDocuments(lastUserMessage.content);
-    const systemMessage = messages.find(m => m.role === 'system');
     let enhancedMessages = [...messages];
     
     if (relevantDocs.length > 0) {
-      const ragContext = 'Hier sind einige relevante Informationen:\n\n' + 
-        relevantDocs.map(doc => doc.content).join('\n\n') + 
-        '\n\nBerücksichtige diese Informationen bei deiner Antwort.';
+      // Erstelle den Single Point of Truth Kontext
+      const ragContext = createSinglePointOfTruthContext(relevantDocs);
       
-      if (systemMessage) {
-        const systemIndex = enhancedMessages.findIndex(m => m.role === 'system');
-        enhancedMessages[systemIndex] = {
-          ...systemMessage,
-          content: `${systemMessage.content}\n\n${ragContext}`
+      // Füge die Anweisung als System-Nachricht hinzu oder erweitere eine bestehende
+      const systemMessageIndex = enhancedMessages.findIndex(m => m.role === 'system');
+      
+      if (systemMessageIndex >= 0) {
+        // Erweitere die bestehende System-Nachricht
+        enhancedMessages[systemMessageIndex] = {
+          ...enhancedMessages[systemMessageIndex],
+          content: `${enhancedMessages[systemMessageIndex].content}\n\n${ragContext}`
         };
       } else {
-        enhancedMessages.unshift({ role: 'system', content: ragContext });
+        // Füge eine neue System-Nachricht am Anfang hinzu
+        enhancedMessages.unshift({ 
+          role: 'system', 
+          content: ragContext 
+        });
       }
     }
     
@@ -476,24 +511,29 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Keine Benutzernachricht gefunden' });
     }
     
-    // RAG-Erweiterung (identisch zu /api/chat/completions)
+    // RAG-Erweiterung mit Single Point of Truth
     const relevantDocs = await retrieveRelevantDocuments(lastUserMessage.content);
-    const systemMessage = messages.find(m => m.role === 'system');
     let enhancedMessages = [...messages];
     
     if (relevantDocs.length > 0) {
-      const ragContext = 'Hier sind einige relevante Informationen:\n\n' + 
-        relevantDocs.map(doc => doc.content).join('\n\n') + 
-        '\n\nBerücksichtige diese Informationen bei deiner Antwort.';
+      // Erstelle den Single Point of Truth Kontext
+      const ragContext = createSinglePointOfTruthContext(relevantDocs);
       
-      if (systemMessage) {
-        const systemIndex = enhancedMessages.findIndex(m => m.role === 'system');
-        enhancedMessages[systemIndex] = {
-          ...systemMessage,
-          content: `${systemMessage.content}\n\n${ragContext}`
+      // Füge die Anweisung als System-Nachricht hinzu oder erweitere eine bestehende
+      const systemMessageIndex = enhancedMessages.findIndex(m => m.role === 'system');
+      
+      if (systemMessageIndex >= 0) {
+        // Erweitere die bestehende System-Nachricht
+        enhancedMessages[systemMessageIndex] = {
+          ...enhancedMessages[systemMessageIndex],
+          content: `${enhancedMessages[systemMessageIndex].content}\n\n${ragContext}`
         };
       } else {
-        enhancedMessages.unshift({ role: 'system', content: ragContext });
+        // Füge eine neue System-Nachricht am Anfang hinzu
+        enhancedMessages.unshift({ 
+          role: 'system', 
+          content: ragContext 
+        });
       }
     }
     
