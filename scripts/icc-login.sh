@@ -1,5 +1,5 @@
 #!/bin/bash
-source configs/config.sh
+
 # Skript zum Öffnen der ICC-Login-Seite und Hilfe beim Download der Kubeconfig
 set -e
 
