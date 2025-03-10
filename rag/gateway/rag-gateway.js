@@ -309,7 +309,7 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-// Chat-Completions-Proxy
+// Chat-Completions-Proxy - dieser Route wird für OpenAI-API-Kompatibilität benötigt
 app.post('/api/chat/completions', async (req, res) => {
   try {
     const { messages, model, stream, temperature } = req.body;
@@ -349,8 +349,8 @@ app.post('/api/chat/completions', async (req, res) => {
       }
     }
     
-    // Request an Ollama senden - HIER IST DIE KORREKTUR:
-    // Änderung von /api/chat/completions zu /api/chat
+    // KRITISCHE ÄNDERUNG: Korrekter Endpunkt für Ollama (/api/chat statt /api/chat/completions)
+    log(`Leite chat/completions-Anfrage an Ollama /api/chat weiter`, 'info');
     const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
       messages: enhancedMessages,
       model: model || 'llama3:8b',
@@ -365,7 +365,7 @@ app.post('/api/chat/completions', async (req, res) => {
       ollamaResponse.data.pipe(res);
     } else {
       // Speichern der Antwort in Elasticsearch im Hintergrund
-      // Die Antwortstruktur von Ollama ist anders als von OpenAI, anpassen
+      // ANPASSUNG: Ollama API hat eine andere Antwortstruktur als OpenAI
       const assistantResponse = ollamaResponse.data.message?.content;
       if (assistantResponse) {
         // Asynchron und nicht-blockierend
@@ -380,7 +380,111 @@ app.post('/api/chat/completions', async (req, res) => {
         ).catch(() => {/* Fehler ignorieren */});
       }
       
-      // Füge RAG-Informationen zur Antwort hinzu
+      // NEU: Formatiere Ollama-Antwort in ein Format ähnlich OpenAI für OpenWebUI
+      // Dies ist notwendig, da OpenWebUI möglicherweise OpenAI-Format erwartet
+      const openAICompatibleResponse = {
+        id: `chatcmpl-${Date.now()}`,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: model || "ollama_model",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: assistantResponse || "",
+          },
+          finish_reason: ollamaResponse.data.done_reason || "stop"
+        }],
+        usage: {
+          prompt_tokens: ollamaResponse.data.prompt_eval_count || 0,
+          completion_tokens: ollamaResponse.data.eval_count || 0,
+          total_tokens: (ollamaResponse.data.prompt_eval_count || 0) + (ollamaResponse.data.eval_count || 0)
+        },
+        // Zusätzliche RAG-Informationen
+        rag_info: {
+          enhanced: relevantDocs.length > 0,
+          docsCount: relevantDocs.length
+        }
+      };
+      
+      res.json(openAICompatibleResponse);
+    }
+  } catch (error) {
+    log(`Fehler bei der Verarbeitung der Chat-Anfrage: ${error.message}`, 'error');
+    res.status(500).json({ error: 'Interner Serverfehler', details: error.message });
+  }
+});
+
+// Direkter Proxy für Ollama /api/chat Endpunkt (für Clients, die Ollama-API direkt verwenden)
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { messages, model, stream, temperature } = req.body;
+    
+    // Extrahiere den letzten Benutzer-Prompt aus den Nachrichten
+    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+    
+    if (!lastUserMessage) {
+      return res.status(400).json({ error: 'Keine Benutzernachricht gefunden' });
+    }
+    
+    // RAG: Relevante Dokumente für den letzten Prompt abrufen
+    const relevantDocs = await retrieveRelevantDocuments(lastUserMessage.content);
+    
+    // Erweitere die Systemnachricht oder füge eine hinzu, wenn keine vorhanden ist
+    const systemMessage = messages.find(m => m.role === 'system');
+    let enhancedMessages = [...messages];
+    
+    if (relevantDocs.length > 0) {
+      const ragContext = 'Hier sind einige relevante Informationen:\n\n' + 
+        relevantDocs.map(doc => doc.content).join('\n\n') + 
+        '\n\nBerücksichtige diese Informationen bei deiner Antwort.';
+      
+      if (systemMessage) {
+        // Aktualisiere die vorhandene Systemnachricht
+        const systemIndex = enhancedMessages.findIndex(m => m.role === 'system');
+        enhancedMessages[systemIndex] = {
+          ...systemMessage,
+          content: `${systemMessage.content}\n\n${ragContext}`
+        };
+      } else {
+        // Füge eine neue Systemnachricht hinzu
+        enhancedMessages.unshift({
+          role: 'system',
+          content: ragContext
+        });
+      }
+    }
+    
+    // Request an Ollama senden (direkt an /api/chat, nativen Endpunkt)
+    const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
+      messages: enhancedMessages,
+      model: model || 'llama3:8b',
+      stream: stream,
+      temperature: temperature
+    }, {
+      responseType: stream ? 'stream' : 'json'
+    });
+    
+    if (stream) {
+      // Stream-Modus: Leite die Antwort direkt weiter
+      ollamaResponse.data.pipe(res);
+    } else {
+      // Speichern der Antwort in Elasticsearch im Hintergrund
+      const assistantResponse = ollamaResponse.data.message?.content;
+      if (assistantResponse) {
+        // Asynchron und nicht-blockierend
+        saveToElasticsearch(
+          assistantResponse,
+          {
+            query: lastUserMessage.content,
+            model: model,
+            enhanced: relevantDocs.length > 0,
+            ragDocsCount: relevantDocs.length
+          }
+        ).catch(() => {/* Fehler ignorieren */});
+      }
+      
+      // Hier direkt das Original-Format von Ollama beibehalten, mit RAG-Info
       const enhancedResponse = {
         ...ollamaResponse.data,
         rag_info: {
@@ -401,6 +505,16 @@ app.post('/api/chat/completions', async (req, res) => {
 app.all('/api/*', async (req, res) => {
   try {
     const ollamaPath = req.path;
+    // Ignoriere bereits behandelte Routen
+    if (ollamaPath === '/api/chat/completions' || 
+        ollamaPath === '/api/chat' || 
+        ollamaPath === '/api/generate' || 
+        ollamaPath === '/api/health' || 
+        ollamaPath.startsWith('/api/rag/')) {
+      return next();
+    }
+    
+    log(`Generischer Proxy für ${ollamaPath}`, 'info');
     const response = await axios({
       method: req.method,
       url: `${ollamaBaseUrl}${ollamaPath}`,
@@ -451,6 +565,8 @@ app.get('/api/rag/documents', async (req, res) => {
 // Server starten
 app.listen(port, async () => {
   log(`RAG-Gateway läuft auf Port ${port}`);
+  log(`Ollama-Basis-URL: ${ollamaBaseUrl}`);
+  log(`Elasticsearch-URL: ${elasticUrl}`);
   
   // Server startet unabhängig vom Elasticsearch-Status
   log('Versuche Elasticsearch-Verbindung herzustellen und Setup durchzuführen...', 'info');
