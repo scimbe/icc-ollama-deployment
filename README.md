@@ -151,8 +151,8 @@ RAG (Retrieval-Augmented Generation) verbindet LLMs mit externen Wissensdatenban
 ### Schnellstart RAG
 
 ```bash
-# Port-Forwarding für Ollama starten (in separatem Terminal)
-make port-forward
+# Bitte stellen Sie sicher, dass Ollama läuft und port-forwarding aktiv ist:
+# kubectl -n $NAMESPACE port-forward svc/$OLLAMA_SERVICE_NAME 11434:11434
 
 # RAG-Infrastruktur lokal starten
 ./scripts/setup-rag.sh
