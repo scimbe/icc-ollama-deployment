@@ -349,8 +349,9 @@ app.post('/api/chat/completions', async (req, res) => {
       }
     }
     
-    // Request an Ollama senden
-    const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat/completions`, {
+    // Request an Ollama senden - HIER IST DIE KORREKTUR:
+    // Änderung von /api/chat/completions zu /api/chat
+    const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
       messages: enhancedMessages,
       model: model || 'llama3:8b',
       stream: stream,
@@ -364,7 +365,8 @@ app.post('/api/chat/completions', async (req, res) => {
       ollamaResponse.data.pipe(res);
     } else {
       // Speichern der Antwort in Elasticsearch im Hintergrund
-      const assistantResponse = ollamaResponse.data.choices[0]?.message?.content;
+      // Die Antwortstruktur von Ollama ist anders als von OpenAI, anpassen
+      const assistantResponse = ollamaResponse.data.message?.content;
       if (assistantResponse) {
         // Asynchron und nicht-blockierend
         saveToElasticsearch(
