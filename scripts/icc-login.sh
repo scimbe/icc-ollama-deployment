@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 ICC_LOGIN_URL="https://icc-login.informatik.haw-hamburg.de/"
-KUBECONFIG_PATH="$HOME/.kube/conf"
+KUBECONFIG_PATH="$HOME/.kube/config"   # In some configurations it differ
 
 echo -e "${BLUE}=== ICC Login Helper ===${NC}"
 echo -e "Dieses Skript öffnet die ICC-Login-Seite in Ihrem Standard-Browser."
@@ -120,6 +120,7 @@ if kubectl cluster-info  &> /dev/null; then
 else
     echo -e "${YELLOW}Konnte keine Verbindung zur ICC herstellen.${NC}"
     echo -e "Bitte überprüfen Sie Ihre VPN-Verbindung und die Kubeconfig-Datei."
+    echo -e "Auch wird ~/kube/config genutzt, das kann in anderen Konfigurationen abweichen"
 fi
 
 echo
