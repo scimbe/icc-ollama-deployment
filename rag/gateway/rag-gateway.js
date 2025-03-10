@@ -4,6 +4,8 @@
  * Dieses Gateway vermittelt zwischen dem Client (Open WebUI) und Ollama,
  * und erweitert Anfragen durch Retrieval-Augmented Generation (RAG) mit Elasticsearch.
  * Es funktioniert mit allen LLM-Modellen, die in Ollama verfügbar sind.
+ * 
+ * Diese Version ist für ressourcenbeschränkte Umgebungen optimiert.
  */
 
 const express = require('express');
@@ -26,12 +28,34 @@ const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const elasticUrl = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
 const elasticIndex = process.env.ELASTICSEARCH_INDEX || 'ollama-rag';
 
-// Elasticsearch Client initialisieren
-const esClient = new Client({ node: elasticUrl });
+// Konstanten für Laufzeitverhalten
+const MAX_RESULTS = parseInt(process.env.MAX_RESULTS || "3");
+const NODE_ENV = process.env.NODE_ENV || 'production';
+
+// Elasticsearch Client initialisieren mit ressourcenschonenden Einstellungen
+const esClient = new Client({ 
+  node: elasticUrl,
+  maxRetries: 3,
+  requestTimeout: 30000,
+  sniffOnStart: false,
+  sniffOnConnectionFault: false,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.json({ limit: '1mb' }));  // Reduzierte Limit-Größe
+
+// Optimiertes Logging
+const log = (message, level = 'info') => {
+  // Im Produktionsmodus nur Fehler und Warnungen loggen
+  if (NODE_ENV === 'production' && level === 'info') return;
+  
+  const timestamp = new Date().toISOString();
+  console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[${timestamp}] [${level}] ${message}`);
+};
 
 // Starten Sie die Indizes, falls sie nicht existieren
 async function setupElasticsearch() {
@@ -45,157 +69,133 @@ async function setupElasticsearch() {
           mappings: {
             properties: {
               content: { type: 'text' },
+              // Vereinfachtes Embedding ohne DIMS-Parameter für Elasticsearch 7.x Kompatibilität
               embedding: { 
-                type: 'dense_vector', 
-                dims: 384,
-                index: true,
-                similarity: 'cosine'
+                type: 'dense_vector',
+                dims: 384
               },
               metadata: { type: 'object' },
               timestamp: { type: 'date' }
             }
+          },
+          settings: {
+            number_of_shards: 1,  // Minimaler Wert für weniger Ressourcenverbrauch
+            number_of_replicas: 0, // Keine Repliken für lokale Entwicklung
+            refresh_interval: "30s" // Weniger häufige Aktualisierungen
           }
         }
       });
-      console.log(`Elasticsearch Index '${elasticIndex}' erstellt`);
+      log(`Elasticsearch Index '${elasticIndex}' erstellt`);
     }
   } catch (error) {
-    console.error('Fehler beim Setup von Elasticsearch:', error);
+    log(`Fehler beim Setup von Elasticsearch: ${error.message}`, 'error');
+    // Keine fatalen Fehler, erlaubt dennoch den Start des Servers
   }
 }
 
-// Funktion zum Generieren von Embeddings mit einem einfachen Algorithmus
-// Dies ist ein einfacher Ersatz für lizenzpflichtige Embedding-Modelle
+// Vereinfachtes und ressourcenschonendes Embedding
 function generateSimpleEmbedding(text) {
-  // Eine einfache Methode, um Text in einen Vektor zu verwandeln
-  // Basiert auf Wortfrequenzen und Position
+  if (!text) return new Array(384).fill(0);
   
-  const words = text.toLowerCase().split(/\W+/).filter(w => w.length > 0);
-  const uniqueWords = [...new Set(words)];
+  // Beschränke die Textlänge für Ressourceneinsparung
+  const limitedText = text.slice(0, 10000);
   
-  // Erstelle einen Vektor mit 384 Dimensionen (standard für viele Embeddings)
+  // Eine vereinfachte Version, die für kurze Texte optimiert ist
+  const words = limitedText.toLowerCase().split(/\W+/).filter(w => w.length > 0);
   const vector = new Array(384).fill(0);
   
-  // Fülle den Vektor basierend auf Wörtern
-  uniqueWords.forEach((word, idx) => {
-    // Hash-Funktion für jedes Wort
+  words.forEach((word, idx) => {
+    // Verwende nur die ersten 100 Wörter für Ressourceneinsparung
+    if (idx >= 100) return;
+    
     let hash = 0;
-    for (let i = 0; i < word.length; i++) {
-      hash = ((hash << 5) - hash) + word.charCodeAt(i);
+    // Nur die ersten 10 Zeichen des Wortes hashen
+    const wordPrefix = word.slice(0, 10);
+    for (let i = 0; i < wordPrefix.length; i++) {
+      hash = ((hash << 5) - hash) + wordPrefix.charCodeAt(i);
       hash = hash & hash;
     }
     
-    // Verwende den Hash, um eine Position im Vektor zu bestimmen
     const pos = Math.abs(hash) % vector.length;
-    
-    // Setze den Wert basierend auf Frequenz und Position
-    const frequency = words.filter(w => w === word).length / words.length;
+    const frequency = Math.min(1, words.filter(w => w === word).length / words.length);
     vector[pos] = frequency;
-    
-    // Setze auch Nachbarpositionen für mehr Ähnlichkeit
-    vector[(pos + 1) % vector.length] = frequency * 0.5;
-    vector[(pos + 2) % vector.length] = frequency * 0.25;
   });
   
-  // Normalisiere den Vektor
-  const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
-  return vector.map(v => magnitude ? v / magnitude : 0);
+  // Einfache Normalisierung ohne teure Berechnungen
+  const sum = vector.reduce((acc, val) => acc + Math.abs(val), 0);
+  return sum > 0 ? vector.map(v => v / sum) : vector;
 }
 
-// Funktion zum Abrufen relevanter Dokumente aus Elasticsearch
-async function retrieveRelevantDocuments(query, maxResults = 3) {
+// Ressourcenschonende Variante für Dokumentenabruf
+async function retrieveRelevantDocuments(query, maxResults = MAX_RESULTS) {
+  if (!query || query.trim().length === 0) {
+    return [];
+  }
+  
   try {
-    const queryEmbedding = generateSimpleEmbedding(query);
-    
-    // Kombinierte Suche mit KNN-Vektorsuche und Text-Matching
+    // Nur Textabfrage für bessere Leistung in ressourcenbeschränkten Umgebungen
     const response = await esClient.search({
       index: elasticIndex,
       body: {
         query: {
-          bool: {
-            should: [
-              // Vektorsuche mit self-generated embedding
-              {
-                script_score: {
-                  query: { match_all: {} },
-                  script: {
-                    source: "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                    params: { query_vector: queryEmbedding }
-                  }
-                }
-              },
-              // Text-Match als Fallback und zur Verbesserung
-              {
-                match: {
-                  content: {
-                    query: query,
-                    boost: 0.5
-                  }
-                }
-              }
-            ]
+          match: {
+            content: {
+              query: query,
+              operator: "or",
+              fuzziness: "AUTO"
+            }
           }
         },
+        _source: ["content", "metadata", "timestamp"],
         size: maxResults
       }
     });
     
     return response.hits.hits.map(hit => hit._source);
   } catch (error) {
-    console.error('Fehler beim Abrufen relevanter Dokumente:', error);
-    
-    // Fallback auf einfache Textsuche, falls Vektorsuche fehlschlägt
-    try {
-      const fallbackResponse = await esClient.search({
-        index: elasticIndex,
-        body: {
-          query: {
-            match: {
-              content: query
-            }
-          },
-          size: maxResults
-        }
-      });
-      
-      return fallbackResponse.hits.hits.map(hit => hit._source);
-    } catch (fallbackError) {
-      console.error('Auch Fallback-Suche fehlgeschlagen:', fallbackError);
-      return [];
-    }
+    log(`Fehler beim Abrufen relevanter Dokumente: ${error.message}`, 'error');
+    return [];
   }
 }
 
-// Hilfsfunktion zum Speichern von Dokumenten in Elasticsearch
+// Speichersparende Speicherfunktion (ohne aufwendige Embedding-Berechnung)
 async function saveToElasticsearch(content, metadata = {}) {
+  if (!content || content.trim().length === 0) {
+    log("Leerer Content wurde nicht gespeichert", 'warn');
+    return;
+  }
+  
   try {
-    // Generiere Embedding für den Inhalt
-    const embedding = generateSimpleEmbedding(content);
+    // Begrenzt die Content-Größe für Ressourceneinsparung
+    const limitedContent = content.slice(0, 50000);
     
     await esClient.index({
       index: elasticIndex,
       body: {
-        content: content,
-        embedding: embedding,
+        content: limitedContent,
         metadata: metadata,
         timestamp: new Date()
       },
-      refresh: true
+      refresh: "wait_for"  // Weniger häufige Aktualisierungen
     });
   } catch (error) {
-    console.error('Fehler beim Speichern in Elasticsearch:', error);
+    log(`Fehler beim Speichern in Elasticsearch: ${error.message}`, 'error');
   }
 }
 
-// Proxy für Ollama API
+// Health-Check-Endpunkt für Monitoring
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', gateway: 'rag-gateway', version: '1.0.0' });
 });
 
-// Hauptendpunkt für RAG-erweiterte Anfragen
+// Speichereffizienter Proxy für Ollama generate API
 app.post('/api/generate', async (req, res) => {
   try {
     const { prompt, model, system, options } = req.body;
+    
+    if (!prompt || prompt.trim().length === 0) {
+      return res.status(400).json({ error: 'Prompt ist erforderlich' });
+    }
     
     // RAG: Relevante Dokumente abrufen
     const relevantDocs = await retrieveRelevantDocuments(prompt);
@@ -220,16 +220,19 @@ app.post('/api/generate', async (req, res) => {
       stream: false
     });
     
-    // Speichern der Antwort in Elasticsearch für kontinuierliches Lernen
-    await saveToElasticsearch(
-      ollamaResponse.data.response,
-      { 
-        query: prompt, 
-        model: model, 
-        enhanced: !!ragContext,
-        ragDocsCount: relevantDocs.length
-      }
-    );
+    // Speichern der Antwort in Elasticsearch im Hintergrund
+    if (ollamaResponse.data.response) {
+      // Ausführung im Hintergrund ohne await
+      saveToElasticsearch(
+        ollamaResponse.data.response,
+        { 
+          query: prompt, 
+          model: model, 
+          enhanced: !!ragContext,
+          ragDocsCount: relevantDocs.length
+        }
+      ).catch(() => {/* Fehler ignorieren */});
+    }
     
     // Antwort zurück an den Client
     res.json({
@@ -240,12 +243,12 @@ app.post('/api/generate', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Fehler bei der Verarbeitung der Anfrage:', error);
+    log(`Fehler bei der Verarbeitung der Anfrage: ${error.message}`, 'error');
     res.status(500).json({ error: 'Interner Serverfehler', details: error.message });
   }
 });
 
-// Stream-Endpunkt für interaktive Antworten
+// Chat-Completions-Proxy
 app.post('/api/chat/completions', async (req, res) => {
   try {
     const { messages, model, stream, temperature } = req.body;
@@ -299,10 +302,11 @@ app.post('/api/chat/completions', async (req, res) => {
       // Stream-Modus: Leite die Antwort direkt weiter
       ollamaResponse.data.pipe(res);
     } else {
-      // Speichern der Antwort in Elasticsearch
+      // Speichern der Antwort in Elasticsearch im Hintergrund
       const assistantResponse = ollamaResponse.data.choices[0]?.message?.content;
       if (assistantResponse) {
-        await saveToElasticsearch(
+        // Asynchron und nicht-blockierend
+        saveToElasticsearch(
           assistantResponse,
           {
             query: lastUserMessage.content,
@@ -310,7 +314,7 @@ app.post('/api/chat/completions', async (req, res) => {
             enhanced: relevantDocs.length > 0,
             ragDocsCount: relevantDocs.length
           }
-        );
+        ).catch(() => {/* Fehler ignorieren */});
       }
       
       // Füge RAG-Informationen zur Antwort hinzu
@@ -325,7 +329,7 @@ app.post('/api/chat/completions', async (req, res) => {
       res.json(enhancedResponse);
     }
   } catch (error) {
-    console.error('Fehler bei der Verarbeitung der Chat-Anfrage:', error);
+    log(`Fehler bei der Verarbeitung der Chat-Anfrage: ${error.message}`, 'error');
     res.status(500).json({ error: 'Interner Serverfehler', details: error.message });
   }
 });
@@ -345,7 +349,7 @@ app.all('/api/*', async (req, res) => {
     
     res.status(response.status).json(response.data);
   } catch (error) {
-    console.error('Fehler beim Proxy zu Ollama:', error);
+    log(`Fehler beim Proxy zu Ollama: ${error.message}`, 'error');
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
   }
 });
@@ -362,7 +366,7 @@ app.post('/api/rag/documents', async (req, res) => {
     await saveToElasticsearch(content, metadata);
     res.json({ success: true, message: 'Dokument gespeichert' });
   } catch (error) {
-    console.error('Fehler beim Speichern des Dokuments:', error);
+    log(`Fehler beim Speichern des Dokuments: ${error.message}`, 'error');
     res.status(500).json({ error: 'Fehler beim Speichern', details: error.message });
   }
 });
@@ -376,41 +380,19 @@ app.get('/api/rag/documents', async (req, res) => {
     const docs = await retrieveRelevantDocuments(query || '', maxResults);
     res.json(docs);
   } catch (error) {
-    console.error('Fehler beim Abrufen der Dokumente:', error);
+    log(`Fehler beim Abrufen der Dokumente: ${error.message}`, 'error');
     res.status(500).json({ error: 'Fehler beim Abrufen', details: error.message });
-  }
-});
-
-// Bulk-Import-Endpunkt
-app.post('/api/rag/bulk', async (req, res) => {
-  try {
-    const { documents } = req.body;
-    
-    if (!Array.isArray(documents)) {
-      return res.status(400).json({ error: 'Documents muss ein Array sein' });
-    }
-    
-    let successCount = 0;
-    
-    for (const doc of documents) {
-      if (doc.content) {
-        await saveToElasticsearch(doc.content, doc.metadata || {});
-        successCount++;
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      message: `${successCount} von ${documents.length} Dokumenten importiert` 
-    });
-  } catch (error) {
-    console.error('Fehler beim Bulk-Import:', error);
-    res.status(500).json({ error: 'Fehler beim Import', details: error.message });
   }
 });
 
 // Server starten
 app.listen(port, async () => {
-  console.log(`RAG-Gateway läuft auf Port ${port}`);
-  await setupElasticsearch().catch(console.error);
+  log(`RAG-Gateway läuft auf Port ${port}`);
+  
+  // Versuche Elasticsearch einzurichten, aber lasse den Server auch starten, wenn es fehlschlägt
+  try {
+    await setupElasticsearch();
+  } catch (e) {
+    log(`Elasticsearch-Setup fehlgeschlagen, Gateway startet trotzdem: ${e.message}`, 'warn');
+  }
 });

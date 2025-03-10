@@ -2,12 +2,16 @@ version: '3.8'
 
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.13  # Ältere, stabilere Version
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g  # Erhöhter Heap-Speicher auf 1GB
+      - xpack.ml.enabled=false  # ML-Features deaktivieren
+      - xpack.watcher.enabled=false  # Watcher deaktivieren
+      - xpack.graph.enabled=false  # Graph deaktivieren
+      - xpack.monitoring.enabled=false  # Monitoring deaktivieren
+      - "ES_JAVA_OPTS=-Xms128m -Xmx128m"  # Minimaler Heap-Speicher
     ports:
       - "9200:9200"
       - "9300:9300"
@@ -15,7 +19,7 @@ services:
       - es_data:/usr/share/elasticsearch/data
     networks:
       - rag-network
-    mem_limit: 2g  # Erhöhtes Speicherlimit auf 2GB
+    mem_limit: 512m  # Stark reduziertes Speicherlimit
     ulimits:
       memlock:
         soft: -1
@@ -25,17 +29,18 @@ services:
         hard: 65536
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.1
+    image: docker.elastic.co/kibana/kibana:7.17.13  # Passende Kibana-Version
     container_name: kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_MAXPAYLOADBYTES=1048576  # Reduziert max. Payload-Größe
     ports:
       - "5601:5601"
     depends_on:
       - elasticsearch
     networks:
       - rag-network
-    mem_limit: 1g  # Erhöhtes Speicherlimit auf 1GB
+    mem_limit: 384m  # Stark reduziertes Speicherlimit
 
   rag-gateway:
     build:
@@ -46,6 +51,7 @@ services:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_INDEX=ollama-rag
       - PORT=3100
+      - NODE_OPTIONS=--max_old_space_size=256  # Reduzierter Node.js Speicherverbrauch
     ports:
       - "3100:3100"
     depends_on:
@@ -54,6 +60,7 @@ services:
       - rag-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    mem_limit: 384m  # Speicherlimit hinzugefügt
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -66,6 +73,7 @@ services:
       - rag-gateway
     networks:
       - rag-network
+    mem_limit: 384m  # Speicherlimit hinzugefügt
 
 networks:
   rag-network:
