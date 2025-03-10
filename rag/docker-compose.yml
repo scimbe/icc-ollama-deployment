@@ -19,7 +19,7 @@ services:
       - es_data:/usr/share/elasticsearch/data
     networks:
       - rag-network
-    mem_limit: 1Gi  # Stark reduziertes Speicherlimit
+    mem_limit: 2G  # Stark reduziertes Speicherlimit
     ulimits:
       memlock:
         soft: -1
