@@ -51,7 +51,7 @@ services:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_INDEX=ollama-rag
       - PORT=3100
-      - NODE_OPTIONS=--max_old_space_size=256  # Reduzierter Node.js Speicherverbrauch
+      # - NODE_OPTIONS=--max_old_space_size=256  # Reduzierter Node.js Speicherverbrauch
     ports:
       - "3100:3100"
     depends_on:
