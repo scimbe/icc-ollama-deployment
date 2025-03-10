@@ -14,7 +14,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [Detaillierte Anleitung](#detaillierte-anleitung)
 - [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
 - [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
-- [Modellanpassung und Finetuning](#modellanpassung-und-finetuning)
+- [Modellanpassung und Finetuning](#modellanpassung-und-finetuning) 👈 **NEU!**
 - [Architektur](#architektur)
 - [Troubleshooting](#troubleshooting)
 - [Wartung](#wartung)
