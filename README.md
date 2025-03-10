@@ -117,10 +117,7 @@ Mit Optionen für kontinuierliche Überwachung oder CSV-Export:
 
 ```bash
 # 10 Messungen im 5-Sekunden-Intervall
-./scripts/monitor-gpu.sh -i 5 -c 10
-
-# Kompakte Ausgabe mit CSV-Export
-./scripts/monitor-gpu.sh -f compact -s gpu_metrics.csv
+./scripts/monitor-gpu.sh -i 5 
 ```
 
 ### GPU-Benchmarks durchführen
