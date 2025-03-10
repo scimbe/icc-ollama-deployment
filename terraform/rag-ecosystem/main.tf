@@ -54,7 +54,7 @@ resource "docker_container" "elasticsearch_container" {
   env = [
     "discovery.type=single-node",
     "xpack.security.enabled=false",
-    "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    "ES_JAVA_OPTS=-Xms1g -Xmx1g"  # Erhöhter Heap-Speicher auf 1GB
   ]
   
   restart = "unless-stopped"
@@ -62,6 +62,13 @@ resource "docker_container" "elasticsearch_container" {
   volumes {
     container_path = "/usr/share/elasticsearch/data"
     host_path      = "${path.cwd}/elasticsearch-data"
+  }
+  
+  memory = 2048  # Erhöhtes Speicherlimit auf 2GB
+  
+  ulimits {
+    memlock = "unlimited:unlimited"
+    nofile = "65536:65536"
   }
 }
 
@@ -96,6 +103,8 @@ resource "docker_container" "kibana_container" {
   depends_on = [
     docker_container.elasticsearch_container
   ]
+  
+  memory = 1024  # Erhöhtes Speicherlimit auf 1GB
 }
 
 # RAG-Gateway Container

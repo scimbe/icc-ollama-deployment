@@ -52,6 +52,31 @@ else
     fi
 fi
 
+# Überprüfe Docker-Ressourcen (wenn möglich)
+echo -e "\n${YELLOW}Prüfe Docker-Ressourcen...${NC}"
+if command -v docker &>/dev/null && docker info 2>&1 | grep -q "Memory Limit"; then
+    DOCKER_MEM=$(docker info 2>/dev/null | grep "Memory Limit:" | awk '{print $3}')
+    if [[ "$DOCKER_MEM" != "0B" ]]; then
+        echo "Docker Speicherlimit: $DOCKER_MEM"
+        # Check if memory limit is less than 3GB and Docker Desktop is being used
+        if docker info 2>/dev/null | grep -q "Desktop" && [[ $(echo "$DOCKER_MEM" | sed 's/GiB//') -lt 3 ]]; then
+            echo -e "${YELLOW}Warnung: Docker hat weniger als 3GB RAM zugewiesen.${NC}"
+            echo "Für optimale Leistung von Elasticsearch wird empfohlen, mindestens 3GB in Docker Desktop-Einstellungen zuzuweisen."
+            echo -e "Möchten Sie trotzdem fortfahren?"
+            read -p "Fortfahren (j/N)? " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+                echo "Bitte erhöhen Sie den für Docker verfügbaren Speicher in den Docker Desktop-Einstellungen."
+                exit 1
+            fi
+        fi
+    else
+        echo "Docker hat kein Speicherlimit (unbegrenzt oder nicht ermittelbar)."
+    fi
+else
+    echo "Docker-Ressourcen können nicht überprüft werden."
+fi
+
 # Setup der RAG-Umgebung mit Docker-Compose
 echo -e "\n${YELLOW}Starte RAG-Infrastruktur...${NC}"
 cd "$ROOT_DIR/rag"
@@ -66,35 +91,52 @@ fi
 echo "Starte Elasticsearch, Kibana und RAG-Gateway..."
 $DOCKER_COMPOSE up -d
 
-# Warte auf Elasticsearch
+# Warte auf Elasticsearch (mit mehr Geduld)
 echo -e "\n${YELLOW}Warte auf Elasticsearch...${NC}"
-for i in {1..30}; do
+for i in {1..90}; do
     if curl -s http://localhost:9200 &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Elasticsearch ist bereit"
+        echo -e "\n${GREEN}✓${NC} Elasticsearch ist bereit"
+        # Zeige Elasticsearch-Status an
+        ES_STATUS=$(curl -s http://localhost:9200/_cluster/health | sed 's/[{},"]//g' | sed 's/:/: /g')
+        echo -e "Elasticsearch Status:\n$ES_STATUS"
         break
     fi
     echo -n "."
-    sleep 2
-    if [ $i -eq 30 ]; then
+    sleep 3
+    if [ $i -eq 90 ]; then
         echo -e "\n${RED}Timeout beim Warten auf Elasticsearch.${NC}"
         echo "Überprüfen Sie den Status mit: docker logs elasticsearch"
-        exit 1
+        echo -e "\nMöchten Sie trotzdem mit Kibana und dem RAG-Gateway fortfahren?"
+        read -p "Fortfahren (j/N)? " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+            echo "Stoppe Container..."
+            $DOCKER_COMPOSE down
+            exit 1
+        fi
     fi
 done
 
 # Warte auf Kibana
 echo -e "\n${YELLOW}Warte auf Kibana...${NC}"
-for i in {1..30}; do
+for i in {1..60}; do
     if curl -s http://localhost:5601 &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Kibana ist bereit"
+        echo -e "\n${GREEN}✓${NC} Kibana ist bereit"
         break
     fi
     echo -n "."
-    sleep 2
-    if [ $i -eq 30 ]; then
+    sleep 3
+    if [ $i -eq 60 ]; then
         echo -e "\n${RED}Timeout beim Warten auf Kibana.${NC}"
         echo "Überprüfen Sie den Status mit: docker logs kibana"
-        exit 1
+        echo -e "\nMöchten Sie trotzdem mit dem RAG-Gateway fortfahren?"
+        read -p "Fortfahren (j/N)? " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+            echo "Stoppe Container..."
+            $DOCKER_COMPOSE down
+            exit 1
+        fi
     fi
 done
 
@@ -102,7 +144,7 @@ done
 echo -e "\n${YELLOW}Warte auf das RAG-Gateway...${NC}"
 for i in {1..30}; do
     if curl -s http://localhost:3100/api/health &> /dev/null; then
-        echo -e "${GREEN}✓${NC} RAG-Gateway ist bereit"
+        echo -e "\n${GREEN}✓${NC} RAG-Gateway ist bereit"
         break
     fi
     echo -n "."
@@ -110,7 +152,6 @@ for i in {1..30}; do
     if [ $i -eq 30 ]; then
         echo -e "\n${RED}Timeout beim Warten auf das RAG-Gateway.${NC}"
         echo "Überprüfen Sie den Status mit: docker logs rag-gateway"
-        exit 1
     fi
 done
 
@@ -128,3 +169,9 @@ echo -e "2. Stellen Sie sicher, dass Ollama weiterhin über Port-Forwarding verf
 echo -e "   ${YELLOW}kubectl -n \$NAMESPACE port-forward svc/\$OLLAMA_SERVICE_NAME 11434:11434${NC}"
 echo -e "3. Testen Sie die RAG-Funktionalität über die WebUI unter ${YELLOW}http://localhost:3000${NC}"
 echo -e "4. Benutzen Sie ${YELLOW}./scripts/stop-rag.sh${NC} um alle Container zu stoppen"
+
+# Schnellstart-Beispiel anzeigen
+echo -e "\n${YELLOW}Schnellstart-Beispiel:${NC}"
+echo -e "Um ein Beispieldokument hochzuladen und sofort zu testen, führen Sie aus:"
+echo -e "${YELLOW}./scripts/upload-rag-documents.sh rag/data/sample-document.md${NC}"
+echo -e "Öffnen Sie dann ${YELLOW}http://localhost:3000${NC} und fragen Sie: 'Was ist RAG und wie funktioniert es?'"

@@ -7,7 +7,7 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g  # Erhöhter Heap-Speicher auf 1GB
     ports:
       - "9200:9200"
       - "9300:9300"
@@ -15,6 +15,14 @@ services:
       - es_data:/usr/share/elasticsearch/data
     networks:
       - rag-network
+    mem_limit: 2g  # Erhöhtes Speicherlimit auf 2GB
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.1
@@ -27,6 +35,7 @@ services:
       - elasticsearch
     networks:
       - rag-network
+    mem_limit: 1g  # Erhöhtes Speicherlimit auf 1GB
 
   rag-gateway:
     build:
