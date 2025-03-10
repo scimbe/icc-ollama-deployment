@@ -215,14 +215,14 @@ done
 
 # Warte auf Open WebUI
 echo -e "\n${YELLOW}Warte auf Open WebUI...${NC}"
-for i in {1..45}; do
+for i in {1..150}; do
     if curl -s http://localhost:3000 &> /dev/null; then
         echo -e "\n${GREEN}✓${NC} Open WebUI ist bereit"
         break
     fi
     echo -n "."
     sleep 2
-    if [ $i -eq 45 ]; then
+    if [ $i -eq 150 ]; then
         echo -e "\n${RED}Timeout beim Warten auf Open WebUI.${NC}"
         echo "Überprüfen Sie den Status mit: docker logs open-webui"
     fi
