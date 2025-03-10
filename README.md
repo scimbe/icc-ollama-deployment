@@ -1,23 +1,12 @@
-# ICC Ollama Deployment
+# Ollama Installation und Dokumentation
 
-Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung auf der HAW Hamburg Informatik Compute Cloud (ICC).
+Diese Repository-Dokumentation wurde zur besseren Übersichtlichkeit in zwei spezifische Dokumente aufgeteilt:
 
-## Übersicht
+- **[DEFAULT-README.md](DEFAULT-README.md)**: Beinhaltet die standardmäßige Installation und Nutzung von Ollama ohne RAG-Integration.
 
-Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt.
+- **[RAG-README.md](RAG-README.md)**: Umfasst detaillierte Informationen zur erweiterten Installation und Konfiguration von Ollama in Verbindung mit Retrieval-Augmented Generation (RAG).
 
-## Inhaltsverzeichnis
-
-- [Voraussetzungen](#voraussetzungen)
-- [ICC-Zugang einrichten](#icc-zugang-einrichten)
-- [Schnellstart](#schnellstart)
-- [Detaillierte Anleitung](#detaillierte-anleitung)
-- [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
-- [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
-- [Architektur](#architektur)
-- [Troubleshooting](#troubleshooting)
-- [Wartung](#wartung)
-- [Lizenz](#lizenz)
+Bitte wähle die für dich relevante Installationsanleitung gemäß deinem Einsatzzweck aus.
 
 ## Voraussetzungen
 
@@ -159,3 +148,4 @@ Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DO
 ## Wartung
 
 Die neuen GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet.
+
