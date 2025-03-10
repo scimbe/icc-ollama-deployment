@@ -31,22 +31,8 @@ const elasticIndex = process.env.ELASTICSEARCH_INDEX || 'ollama-rag';
 // Konstanten für Laufzeitverhalten
 const MAX_RESULTS = parseInt(process.env.MAX_RESULTS || "3");
 const NODE_ENV = process.env.NODE_ENV || 'production';
-
-// Elasticsearch Client initialisieren mit ressourcenschonenden Einstellungen
-const esClient = new Client({ 
-  node: elasticUrl,
-  maxRetries: 3,
-  requestTimeout: 30000,
-  sniffOnStart: false,
-  sniffOnConnectionFault: false,
-  ssl: {
-    rejectUnauthorized: false
-  }
-});
-
-// Middleware
-app.use(cors());
-app.use(bodyParser.json({ limit: '1mb' }));  // Reduzierte Limit-Größe
+const MAX_ELASTIC_RETRY = parseInt(process.env.MAX_ELASTIC_RETRY || "20");
+const ELASTIC_RETRY_INTERVAL = parseInt(process.env.ELASTIC_RETRY_INTERVAL || "5000");
 
 // Optimiertes Logging
 const log = (message, level = 'info') => {
@@ -57,12 +43,59 @@ const log = (message, level = 'info') => {
   console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[${timestamp}] [${level}] ${message}`);
 };
 
+// Elasticsearch Client mit verbesserten Wiederverbindungs-Einstellungen
+const esClient = new Client({ 
+  node: elasticUrl,
+  maxRetries: 5,
+  requestTimeout: 30000,
+  sniffOnStart: false,
+  sniffOnConnectionFault: false,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+// Verbesserte Funktion zur Überprüfung der Elasticsearch-Verbindung
+async function waitForElasticsearch() {
+  log(`Warte auf Elasticsearch unter ${elasticUrl}...`, 'info');
+  
+  for (let attempt = 1; attempt <= MAX_ELASTIC_RETRY; attempt++) {
+    try {
+      // Einfache Ping-Anfrage
+      await esClient.ping();
+      log(`Elasticsearch ist erreichbar (Versuch ${attempt})`, 'info');
+      return true;
+    } catch (error) {
+      log(`Elasticsearch-Verbindung fehlgeschlagen (Versuch ${attempt}/${MAX_ELASTIC_RETRY}): ${error.message}`, 'warn');
+      
+      if (attempt === MAX_ELASTIC_RETRY) {
+        log('Maximale Anzahl von Verbindungsversuchen erreicht', 'error');
+        return false;
+      }
+      
+      // Warte vor dem nächsten Versuch
+      await new Promise(resolve => setTimeout(resolve, ELASTIC_RETRY_INTERVAL));
+    }
+  }
+  
+  return false;
+}
+
 // Starten Sie die Indizes, falls sie nicht existieren
 async function setupElasticsearch() {
   try {
+    // Prüfe zuerst, ob Elasticsearch verfügbar ist
+    const isConnected = await waitForElasticsearch();
+    if (!isConnected) {
+      log('Elasticsearch ist nicht verfügbar, überspringe Setup', 'warn');
+      return;
+    }
+    
+    // Prüfe ob der Index existiert
     const indexExists = await esClient.indices.exists({ index: elasticIndex });
     
     if (!indexExists) {
+      log(`Erstelle Index '${elasticIndex}'...`, 'info');
       await esClient.indices.create({
         index: elasticIndex,
         body: {
@@ -85,13 +118,19 @@ async function setupElasticsearch() {
           }
         }
       });
-      log(`Elasticsearch Index '${elasticIndex}' erstellt`);
+      log(`Elasticsearch Index '${elasticIndex}' erstellt`, 'info');
+    } else {
+      log(`Elasticsearch Index '${elasticIndex}' existiert bereits`, 'info');
     }
   } catch (error) {
     log(`Fehler beim Setup von Elasticsearch: ${error.message}`, 'error');
     // Keine fatalen Fehler, erlaubt dennoch den Start des Servers
   }
 }
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json({ limit: '1mb' }));  // Reduzierte Limit-Größe
 
 // Vereinfachtes und ressourcenschonendes Embedding
 function generateSimpleEmbedding(text) {
@@ -133,6 +172,13 @@ async function retrieveRelevantDocuments(query, maxResults = MAX_RESULTS) {
   }
   
   try {
+    // Prüfe zuerst, ob Elasticsearch verfügbar ist
+    const isConnected = await esClient.ping().catch(() => false);
+    if (!isConnected) {
+      log('Elasticsearch ist nicht verfügbar, überspringe Dokumentenabruf', 'warn');
+      return [];
+    }
+    
     // Nur Textabfrage für bessere Leistung in ressourcenbeschränkten Umgebungen
     const response = await esClient.search({
       index: elasticIndex,
@@ -166,6 +212,13 @@ async function saveToElasticsearch(content, metadata = {}) {
   }
   
   try {
+    // Prüfe zuerst, ob Elasticsearch verfügbar ist
+    const isConnected = await esClient.ping().catch(() => false);
+    if (!isConnected) {
+      log('Elasticsearch ist nicht verfügbar, überspringe Speicherung', 'warn');
+      return;
+    }
+    
     // Begrenzt die Content-Größe für Ressourceneinsparung
     const limitedContent = content.slice(0, 50000);
     
@@ -184,8 +237,16 @@ async function saveToElasticsearch(content, metadata = {}) {
 }
 
 // Health-Check-Endpunkt für Monitoring
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', gateway: 'rag-gateway', version: '1.0.0' });
+app.get('/api/health', async (req, res) => {
+  // Prüfe auch Elasticsearch-Verbindung
+  const elasticsearchStatus = await esClient.ping().catch(() => false);
+  
+  res.json({ 
+    status: 'ok', 
+    gateway: 'rag-gateway', 
+    version: '1.0.0',
+    elasticsearch: elasticsearchStatus ? 'connected' : 'disconnected'
+  });
 });
 
 // Speichereffizienter Proxy für Ollama generate API
@@ -389,10 +450,17 @@ app.get('/api/rag/documents', async (req, res) => {
 app.listen(port, async () => {
   log(`RAG-Gateway läuft auf Port ${port}`);
   
-  // Versuche Elasticsearch einzurichten, aber lasse den Server auch starten, wenn es fehlschlägt
-  try {
-    await setupElasticsearch();
-  } catch (e) {
-    log(`Elasticsearch-Setup fehlgeschlagen, Gateway startet trotzdem: ${e.message}`, 'warn');
-  }
+  // Server startet unabhängig vom Elasticsearch-Status
+  log('Versuche Elasticsearch-Verbindung herzustellen und Setup durchzuführen...', 'info');
+  
+  // Verzögerter Verbindungsaufbau, damit Elasticsearch Zeit hat zu starten
+  setTimeout(async () => {
+    try {
+      await setupElasticsearch();
+      log('Elasticsearch-Setup abgeschlossen', 'info');
+    } catch (e) {
+      log(`Elasticsearch-Setup fehlgeschlagen, Gateway bleibt trotzdem aktiv: ${e.message}`, 'warn');
+      log('RAG-Funktionalität wird eingeschränkt sein, bis Elasticsearch verfügbar ist', 'warn');
+    }
+  }, 10000); // 10 Sekunden Verzögerung
 });
