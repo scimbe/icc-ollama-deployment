@@ -1,11 +1,5 @@
 # Ollama Installation und Dokumentation
 
-
-Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung und Modellanpassung auf der HAW Hamburg Informatik Compute Cloud (ICC).
-
-
-- **[DEFAULT-README.md](DEFAULT-README.md)**: Beinhaltet die standardmäßige Installation und Nutzung von Ollama ohne RAG-Integration.
-
 Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt sowie Funktionen zur Anpassung der Modelle an spezifische Anwendungsfälle.
 
 ## Inhaltsverzeichnis
@@ -16,7 +10,6 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [Detaillierte Anleitung](#detaillierte-anleitung)
 - [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
 - [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
-- [Modellanpassung und Finetuning](#modellanpassung-und-finetuning) 👈 **NEU!**
 - [Architektur](#architektur)
 - [Troubleshooting](#troubleshooting)
 - [Wartung](#wartung)
@@ -144,73 +137,6 @@ make gpu-bench MODEL=llama3:8b
 # oder
 make gpu-compat
 ```
-
-## Modellanpassung und Finetuning
-
-Das Projekt bietet Möglichkeiten zur Anpassung von Modellen für spezifische Anwendungsfälle:
-
-### Modell anpassen (Finetuning)
-
-Passen Sie ein Modell an Ihre spezifischen Anforderungen an:
-
-```bash
-./scripts/finetune-simple.sh -m llama3:8b -n haw-custom -d examples/haw_training_data.jsonl
-# oder
-make finetune-simple MODEL=llama3:8b NAME=haw-custom DATA=examples/haw_training_data.jsonl
-```
-
-Das Skript führt folgende Schritte aus:
-1. Erstellt ein angepasstes Modell mit HAW-spezifischem Template
-2. Trainiert es mit den angegebenen Trainingsdaten
-3. Macht es als neues Modell verfügbar
-
-### Trainingsdaten vorbereiten
-
-Konvertieren Sie JSONL-Trainingsdaten in verschiedene Formate:
-
-```bash
-./scripts/convert-training-data.sh -i my_data.jsonl -o converted_data.txt -f txt
-# oder
-make convert-training-data INPUT=my_data.jsonl FORMAT=ollama
-```
-
-Unterstützte Formate:
-- `txt`: Einfaches Textformat mit Frage-Antwort-Struktur
-- `md`: Markdown-Format für bessere Lesbarkeit
-- `ollama`: Format optimiert für Ollama-Training
-
-### Templates erstellen
-
-Erstellen Sie benutzerdefinierte Modelfile-Templates für verschiedene Anwendungsfälle:
-
-```bash
-./scripts/create-template.sh -t academic -l de my_template
-# oder
-make create-template TYPE=academic NAME=my_template
-```
-
-Template-Typen:
-- `academic`: Für wissenschaftliche/akademische Anwendungen
-- `chat`: Für konversationelle Assistenten
-- `coding`: Optimiert für Programmierunterstützung
-- `assistance`: Allgemeiner Assistenten-Modus
-
-### Angepasste Modelle testen
-
-Testen Sie Ihre angepassten Modelle mit verschiedenen Prompts:
-
-```bash
-./scripts/test-model.sh haw-custom
-# oder
-make test-model MODEL=haw-custom
-```
-
-Für Batch-Tests mit mehreren Prompts:
-```bash
-./scripts/test-model.sh -b prompts.txt haw-custom
-```
-
-Weitere Details zur Modellanpassung finden Sie in der [ausführlichen Dokumentation](DOCUMENTATION.md#11-modellanpassung-und-finetuning).
 
 ## Architektur
 
