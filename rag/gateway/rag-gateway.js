@@ -57,7 +57,7 @@ async function checkOllamaVersion() {
     try {
       await axios.post(`${ollamaBaseUrl}/api/chat`, {
         messages: [{ role: "user", content: "test" }],
-        model: "llama3:8b", stream: false
+        model: "phi4", stream: false
       });
       preferredApiEndpoint = 'chat';
       log('Verwende /api/chat-Endpunkt', 'info');
@@ -74,7 +74,7 @@ async function checkOllamaVersion() {
     // Teste Generate-API
     try {
       await axios.post(`${ollamaBaseUrl}/api/generate`, {
-        prompt: "test", model: "llama3:8b", stream: false
+        prompt: "test", model: "phi4", stream: false
       });
       preferredApiEndpoint = 'generate';
       log('Verwende /api/generate-Endpunkt', 'info');
@@ -103,33 +103,53 @@ async function setupElasticsearch() {
     }
     
     // Index prüfen/erstellen
-    const indexExists = await esClient.indices.exists({ index: elasticIndex });
-    if (!indexExists.body) {
-      await esClient.indices.create({
-        index: elasticIndex,
-        body: {
-          mappings: {
-            properties: {
-              content: { type: 'text' },
-              embedding: { type: 'dense_vector', dims: 384 },
-              metadata: { type: 'object' },
-              timestamp: { type: 'date' }
+    let indexExists = false;
+    try {
+      indexExists = await esClient.indices.exists({ index: elasticIndex });
+      // Kompatibilität mit neueren Elasticsearch-Clients sicherstellen
+      if (typeof indexExists === 'object') {
+        indexExists = indexExists.body === true || indexExists.statusCode === 200;
+      }
+    } catch (error) {
+      log(`Fehler beim Prüfen, ob Index existiert: ${error.message}`, 'warn');
+      // Wir versuchen trotzdem, den Index zu erstellen
+    }
+    
+    if (!indexExists) {
+      try {
+        await esClient.indices.create({
+          index: elasticIndex,
+          body: {
+            mappings: {
+              properties: {
+                content: { type: 'text' },
+                embedding: { type: 'dense_vector', dims: 384 },
+                metadata: { type: 'object' },
+                timestamp: { type: 'date' }
+              }
+            },
+            settings: {
+              number_of_shards: 1,
+              number_of_replicas: 0,
+              refresh_interval: "30s"
             }
-          },
-          settings: {
-            number_of_shards: 1,
-            number_of_replicas: 0,
-            refresh_interval: "30s"
           }
+        });
+        log(`Index '${elasticIndex}' erstellt`, 'info');
+      } catch (error) {
+        // Ignoriere "resource_already_exists_exception", da dies bedeutet, dass der Index bereits existiert
+        if (error.message.includes('resource_already_exists_exception')) {
+          log(`Index '${elasticIndex}' existiert bereits`, 'info');
+        } else {
+          throw error;
         }
-      });
-      log(`Index '${elasticIndex}' erstellt`, 'info');
+      }
     } else {
       log(`Index '${elasticIndex}' existiert bereits`, 'info');
     }
     return true;
   } catch (error) {
-    log(`Elasticsearch-Setup fehlgeschlagen: ${error.message}`, 'error');
+    log(`Elasticsearch-Setup fehlgeschlagen: ${error.message}`, 'error', error);
     return false;
   }
 }
@@ -154,7 +174,7 @@ async function retrieveRelevantDocuments(query, maxResults = MAX_RESULTS) {
       }
     });
     
-    const docs = response.hits.hits.map(hit => hit._source);
+    const docs = response.hits?.hits?.map(hit => hit._source) || [];
     log(`${docs.length} relevante Dokumente gefunden`, 'debug');
     return docs;
   } catch (error) {
@@ -165,14 +185,28 @@ async function retrieveRelevantDocuments(query, maxResults = MAX_RESULTS) {
 
 // Dokument speichern
 async function saveToElasticsearch(content, metadata = {}) {
-  if (!content || content.trim().length === 0) return;
+  if (!content || content.trim().length === 0) {
+    log('Kein Inhalt zum Speichern angegeben', 'warn');
+    return false;
+  }
   
   try {
-    const isConnected = await esClient.ping().catch(() => false);
-    if (!isConnected) return;
+    // Ping-Test explizit durchführen
+    const isConnected = await esClient.ping().catch((error) => {
+      log(`Elasticsearch ping fehlgeschlagen: ${error.message}`, 'error');
+      return false;
+    });
     
-    const limitedContent = content.slice(0, 50000);
-    await esClient.index({
+    if (!isConnected) {
+      log('Elasticsearch nicht erreichbar, kann Dokument nicht speichern', 'error');
+      return false;
+    }
+    
+    // Trim und Limit für Inhalt
+    const limitedContent = content.trim().slice(0, 50000);
+    
+    // Dokument indexieren mit expliziter Fehlerbehandlung
+    const response = await esClient.index({
       index: elasticIndex,
       body: {
         content: limitedContent,
@@ -181,9 +215,14 @@ async function saveToElasticsearch(content, metadata = {}) {
       },
       refresh: "wait_for"
     });
-    log('Dokument gespeichert', 'debug');
+    
+    // Erfolgreiche Indexierung loggen
+    const docId = response._id || response.body?._id;
+    log(`Dokument erfolgreich gespeichert mit ID: ${docId}`, 'debug');
+    return true;
   } catch (error) {
-    log(`Speichern fehlgeschlagen: ${error.message}`, 'error');
+    log(`Dokument konnte nicht gespeichert werden: ${error.message}`, 'error', error);
+    return false;
   }
 }
 
@@ -198,7 +237,7 @@ async function makeOllamaRequest(prompt, model, system, options, stream = false,
     
     try {
       return await axios.post(`${ollamaBaseUrl}/api/chat`, {
-        messages, model: model || 'llama3:8b', stream, options, temperature
+        messages, model: model || 'phi4', stream, options, temperature
       }, requestOptions);
     } catch (error) {
       if (error.response?.status === 404) {
@@ -210,7 +249,7 @@ async function makeOllamaRequest(prompt, model, system, options, stream = false,
   } else {
     try {
       return await axios.post(`${ollamaBaseUrl}/api/generate`, {
-        prompt, model: model || 'llama3:8b', stream, options, system, temperature
+        prompt, model: model || 'phi4', stream, options, system, temperature
       }, requestOptions);
     } catch (error) {
       if (error.response?.status === 404) {
@@ -296,7 +335,7 @@ app.post('/api/generate', async (req, res) => {
     // Anfrage an Ollama
     const ollamaResponse = await makeOllamaRequest(
       enhancedPrompt,
-      model || 'llama3:8b',
+      model || 'phi4',
       system,
       options,
       stream || false,
@@ -371,7 +410,7 @@ app.post('/api/chat/completions', async (req, res) => {
     // Anfrage an Ollama
     const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
       messages: enhancedMessages,
-      model: model || 'llama3:8b',
+      model: model || 'phi4',
       stream,
       temperature
     }, {
@@ -461,7 +500,7 @@ app.post('/api/chat', async (req, res) => {
     // Anfrage an Ollama
     const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
       messages: enhancedMessages,
-      model: model || 'llama3:8b',
+      model: model || 'phi4',
       stream,
       temperature
     }, {
@@ -501,6 +540,57 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// RAG-Dokumente API
+app.post('/api/rag/documents', async (req, res) => {
+  try {
+    log('Dokument-Upload-Request erhalten', 'debug', req.body);
+    
+    const { content, metadata } = req.body;
+    if (!content) {
+      log('Content fehlt in der Anfrage', 'error');
+      return res.status(400).json({ error: 'Content ist erforderlich' });
+    }
+    
+    // Prüfen, ob Elasticsearch erreichbar ist
+    const isConnected = await esClient.ping().catch((error) => {
+      log(`Elasticsearch ping fehlgeschlagen: ${error.message}`, 'error');
+      return false;
+    });
+    
+    if (!isConnected) {
+      log('Elasticsearch nicht erreichbar für Dokument-Upload', 'error');
+      return res.status(503).json({ error: 'Elasticsearch ist nicht erreichbar' });
+    }
+    
+    // Mit verbesserter Fehlerbehandlung speichern
+    const saved = await saveToElasticsearch(content, metadata);
+    
+    if (saved) {
+      log('Dokument erfolgreich gespeichert', 'info');
+      return res.json({ success: true, message: 'Dokument gespeichert' });
+    } else {
+      log('Dokument konnte nicht gespeichert werden', 'error');
+      return res.status(500).json({ error: 'Fehler beim Speichern des Dokuments' });
+    }
+  } catch (error) {
+    log(`Unbehandelter Fehler beim Speichern: ${error.message}`, 'error', error);
+    res.status(500).json({ error: 'Fehler beim Speichern', details: error.message });
+  }
+});
+
+app.get('/api/rag/documents', async (req, res) => {
+  try {
+    const { query, limit } = req.query;
+    const maxResults = parseInt(limit) || 10;
+    
+    const docs = await retrieveRelevantDocuments(query || '', maxResults);
+    res.json(docs);
+  } catch (error) {
+    log(`Fehler beim Abrufen: ${error.message}`, 'error');
+    res.status(500).json({ error: 'Fehler beim Abrufen', details: error.message });
+  }
+});
+
 // Allgemeiner API-Proxy
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
@@ -528,35 +618,6 @@ apiRouter.all('/:path(*)', async (req, res) => {
     res.status(error.response?.status || 500).json(
       error.response?.data || { error: error.message }
     );
-  }
-});
-
-// RAG-Dokumente API
-app.post('/api/rag/documents', async (req, res) => {
-  try {
-    const { content, metadata } = req.body;
-    if (!content) {
-      return res.status(400).json({ error: 'Content ist erforderlich' });
-    }
-    
-    await saveToElasticsearch(content, metadata);
-    res.json({ success: true, message: 'Dokument gespeichert' });
-  } catch (error) {
-    log(`Fehler beim Speichern: ${error.message}`, 'error');
-    res.status(500).json({ error: 'Fehler beim Speichern', details: error.message });
-  }
-});
-
-app.get('/api/rag/documents', async (req, res) => {
-  try {
-    const { query, limit } = req.query;
-    const maxResults = parseInt(limit) || 10;
-    
-    const docs = await retrieveRelevantDocuments(query || '', maxResults);
-    res.json(docs);
-  } catch (error) {
-    log(`Fehler beim Abrufen: ${error.message}`, 'error');
-    res.status(500).json({ error: 'Fehler beim Abrufen', details: error.message });
   }
 });
 
