@@ -1,11 +1,9 @@
 /**
  * RAG-Gateway für Ollama ICC Deployment
  * 
- * Dieses Gateway vermittelt zwischen dem Client (Open WebUI) und Ollama,
- * und erweitert Anfragen durch Retrieval-Augmented Generation (RAG) mit Elasticsearch.
- * Es funktioniert mit allen LLM-Modellen, die in Ollama verfügbar sind.
- * 
- * Diese Version ist für ressourcenbeschränkte Umgebungen optimiert.
+ * Versionskompatible Implementierung mit Debug-Unterstützung für beide
+ * Ollama-API-Endpunkte (/api/generate und /api/chat)
+ * v2.0.0 (2025)
  */
 
 const express = require('express');
@@ -15,253 +13,277 @@ const axios = require('axios');
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
 
-// Lade Umgebungsvariablen
 dotenv.config();
-
 const app = express();
 const port = process.env.PORT || 3100;
-
-// Ollama API URL
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-
-// Elasticsearch Konfiguration
 const elasticUrl = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
 const elasticIndex = process.env.ELASTICSEARCH_INDEX || 'ollama-rag';
-
-// Konstanten für Laufzeitverhalten
 const MAX_RESULTS = parseInt(process.env.MAX_RESULTS || "3");
 const NODE_ENV = process.env.NODE_ENV || 'production';
-const MAX_ELASTIC_RETRY = parseInt(process.env.MAX_ELASTIC_RETRY || "20");
-const ELASTIC_RETRY_INTERVAL = parseInt(process.env.ELASTIC_RETRY_INTERVAL || "5000");
+const DEBUG_MODE = process.env.DEBUG_MODE === 'true' || true;
+let preferredApiEndpoint = 'chat'; // Dynamisch ermittelt beim Start
 
-// Optimiertes Logging
-const log = (message, level = 'info') => {
-  // Im Produktionsmodus nur Fehler und Warnungen loggen
-  if (NODE_ENV === 'production' && level === 'info') return;
-  
+// Erweitertes Logging
+const log = (message, level = 'info', details = null) => {
+  if (NODE_ENV === 'production' && level === 'info' && !DEBUG_MODE) return;
   const timestamp = new Date().toISOString();
-  console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[${timestamp}] [${level}] ${message}`);
+  console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[${timestamp}] [${level.toUpperCase()}] ${message}`);
+  if (details && (DEBUG_MODE || level === 'error')) {
+    let detailsOutput = typeof details === 'object' ? 
+      JSON.stringify(details, null, 2) : String(details);
+    console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[${timestamp}] [${level.toUpperCase()}] Details: ${detailsOutput}`);
+  }
 };
 
-// Elasticsearch Client mit verbesserten Wiederverbindungs-Einstellungen
+// Elasticsearch Client
 const esClient = new Client({ 
   node: elasticUrl,
   maxRetries: 5,
   requestTimeout: 30000,
   sniffOnStart: false,
   sniffOnConnectionFault: false,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
-// Verbesserte Funktion zur Überprüfung der Elasticsearch-Verbindung
-async function waitForElasticsearch() {
-  log(`Warte auf Elasticsearch unter ${elasticUrl}...`, 'info');
-  
-  for (let attempt = 1; attempt <= MAX_ELASTIC_RETRY; attempt++) {
+// Test Ollama-API und bestimme bevorzugten Endpunkt
+async function checkOllamaVersion() {
+  try {
+    // Teste Version
+    const response = await axios.get(`${ollamaBaseUrl}/api/version`);
+    log(`Ollama-Version erkannt: ${response.data.version}`, 'info');
+    
+    // Teste Chat-API
     try {
-      // Einfache Ping-Anfrage
-      await esClient.ping();
-      log(`Elasticsearch ist erreichbar (Versuch ${attempt})`, 'info');
+      await axios.post(`${ollamaBaseUrl}/api/chat`, {
+        messages: [{ role: "user", content: "test" }],
+        model: "llama3:8b", stream: false
+      });
+      preferredApiEndpoint = 'chat';
+      log('Verwende /api/chat-Endpunkt', 'info');
       return true;
-    } catch (error) {
-      log(`Elasticsearch-Verbindung fehlgeschlagen (Versuch ${attempt}/${MAX_ELASTIC_RETRY}): ${error.message}`, 'warn');
-      
-      if (attempt === MAX_ELASTIC_RETRY) {
-        log('Maximale Anzahl von Verbindungsversuchen erreicht', 'error');
-        return false;
+    } catch (chatError) {
+      if (chatError.response?.status === 404) {
+        preferredApiEndpoint = 'generate';
+        log('Verwende /api/generate-Endpunkt (chat nicht verfügbar)', 'warn');
+        return true;
       }
-      
-      // Warte vor dem nächsten Versuch
-      await new Promise(resolve => setTimeout(resolve, ELASTIC_RETRY_INTERVAL));
+      log(`Chat-API-Test fehlgeschlagen: ${chatError.message}`, 'warn');
     }
+
+    // Teste Generate-API
+    try {
+      await axios.post(`${ollamaBaseUrl}/api/generate`, {
+        prompt: "test", model: "llama3:8b", stream: false
+      });
+      preferredApiEndpoint = 'generate';
+      log('Verwende /api/generate-Endpunkt', 'info');
+      return true;
+    } catch (genError) {
+      log(`Generate-API-Test fehlgeschlagen: ${genError.message}`, 'warn');
+    }
+    
+    return false;
+  } catch (error) {
+    log(`Ollama-Verbindungsfehler: ${error.message}`, 'error');
+    return false;
   }
-  
-  return false;
 }
 
-// Starten Sie die Indizes, falls sie nicht existieren
+// Elasticsearch Setup
 async function setupElasticsearch() {
   try {
-    // Prüfe zuerst, ob Elasticsearch verfügbar ist
-    const isConnected = await waitForElasticsearch();
-    if (!isConnected) {
-      log('Elasticsearch ist nicht verfügbar, überspringe Setup', 'warn');
-      return;
+    // Ping Test
+    try {
+      await esClient.ping();
+      log('Elasticsearch ist erreichbar', 'info');
+    } catch (pingError) {
+      log(`Elasticsearch nicht erreichbar: ${pingError.message}`, 'warn');
+      return false;
     }
     
-    // Prüfe ob der Index existiert
+    // Index prüfen/erstellen
     const indexExists = await esClient.indices.exists({ index: elasticIndex });
-    
-    if (!indexExists) {
-      log(`Erstelle Index '${elasticIndex}'...`, 'info');
+    if (!indexExists.body) {
       await esClient.indices.create({
         index: elasticIndex,
         body: {
           mappings: {
             properties: {
               content: { type: 'text' },
-              // Vereinfachtes Embedding ohne DIMS-Parameter für Elasticsearch 7.x Kompatibilität
-              embedding: { 
-                type: 'dense_vector',
-                dims: 384
-              },
+              embedding: { type: 'dense_vector', dims: 384 },
               metadata: { type: 'object' },
               timestamp: { type: 'date' }
             }
           },
           settings: {
-            number_of_shards: 1,  // Minimaler Wert für weniger Ressourcenverbrauch
-            number_of_replicas: 0, // Keine Repliken für lokale Entwicklung
-            refresh_interval: "30s" // Weniger häufige Aktualisierungen
+            number_of_shards: 1,
+            number_of_replicas: 0,
+            refresh_interval: "30s"
           }
         }
       });
-      log(`Elasticsearch Index '${elasticIndex}' erstellt`, 'info');
+      log(`Index '${elasticIndex}' erstellt`, 'info');
     } else {
-      log(`Elasticsearch Index '${elasticIndex}' existiert bereits`, 'info');
+      log(`Index '${elasticIndex}' existiert bereits`, 'info');
     }
+    return true;
   } catch (error) {
-    log(`Fehler beim Setup von Elasticsearch: ${error.message}`, 'error');
-    // Keine fatalen Fehler, erlaubt dennoch den Start des Servers
+    log(`Elasticsearch-Setup fehlgeschlagen: ${error.message}`, 'error');
+    return false;
   }
 }
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json({ limit: '1mb' }));  // Reduzierte Limit-Größe
-
-// Vereinfachtes und ressourcenschonendes Embedding
-function generateSimpleEmbedding(text) {
-  if (!text) return new Array(384).fill(0);
-  
-  // Beschränke die Textlänge für Ressourceneinsparung
-  const limitedText = text.slice(0, 10000);
-  
-  // Eine vereinfachte Version, die für kurze Texte optimiert ist
-  const words = limitedText.toLowerCase().split(/\W+/).filter(w => w.length > 0);
-  const vector = new Array(384).fill(0);
-  
-  words.forEach((word, idx) => {
-    // Verwende nur die ersten 100 Wörter für Ressourceneinsparung
-    if (idx >= 100) return;
-    
-    let hash = 0;
-    // Nur die ersten 10 Zeichen des Wortes hashen
-    const wordPrefix = word.slice(0, 10);
-    for (let i = 0; i < wordPrefix.length; i++) {
-      hash = ((hash << 5) - hash) + wordPrefix.charCodeAt(i);
-      hash = hash & hash;
-    }
-    
-    const pos = Math.abs(hash) % vector.length;
-    const frequency = Math.min(1, words.filter(w => w === word).length / words.length);
-    vector[pos] = frequency;
-  });
-  
-  // Einfache Normalisierung ohne teure Berechnungen
-  const sum = vector.reduce((acc, val) => acc + Math.abs(val), 0);
-  return sum > 0 ? vector.map(v => v / sum) : vector;
-}
-
-// Ressourcenschonende Variante für Dokumentenabruf
+// Dokumentensuche
 async function retrieveRelevantDocuments(query, maxResults = MAX_RESULTS) {
-  if (!query || query.trim().length === 0) {
-    return [];
-  }
+  if (!query || query.trim().length === 0) return [];
   
   try {
-    // Prüfe zuerst, ob Elasticsearch verfügbar ist
     const isConnected = await esClient.ping().catch(() => false);
     if (!isConnected) {
-      log('Elasticsearch ist nicht verfügbar, überspringe Dokumentenabruf', 'warn');
+      log('Elasticsearch nicht verfügbar, überspringe Dokumentenabruf', 'warn');
       return [];
     }
     
-    // Nur Textabfrage für bessere Leistung in ressourcenbeschränkten Umgebungen
     const response = await esClient.search({
       index: elasticIndex,
       body: {
-        query: {
-          match: {
-            content: {
-              query: query,
-              operator: "or",
-              fuzziness: "AUTO"
-            }
-          }
-        },
+        query: { match: { content: { query, operator: "or", fuzziness: "AUTO" } } },
         _source: ["content", "metadata", "timestamp"],
         size: maxResults
       }
     });
     
-    return response.hits.hits.map(hit => hit._source);
+    const docs = response.hits.hits.map(hit => hit._source);
+    log(`${docs.length} relevante Dokumente gefunden`, 'debug');
+    return docs;
   } catch (error) {
-    log(`Fehler beim Abrufen relevanter Dokumente: ${error.message}`, 'error');
+    log(`Dokumentenabruf fehlgeschlagen: ${error.message}`, 'error');
     return [];
   }
 }
 
-// Speichersparende Speicherfunktion (ohne aufwendige Embedding-Berechnung)
+// Dokument speichern
 async function saveToElasticsearch(content, metadata = {}) {
-  if (!content || content.trim().length === 0) {
-    log("Leerer Content wurde nicht gespeichert", 'warn');
-    return;
-  }
+  if (!content || content.trim().length === 0) return;
   
   try {
-    // Prüfe zuerst, ob Elasticsearch verfügbar ist
     const isConnected = await esClient.ping().catch(() => false);
-    if (!isConnected) {
-      log('Elasticsearch ist nicht verfügbar, überspringe Speicherung', 'warn');
-      return;
-    }
+    if (!isConnected) return;
     
-    // Begrenzt die Content-Größe für Ressourceneinsparung
     const limitedContent = content.slice(0, 50000);
-    
     await esClient.index({
       index: elasticIndex,
       body: {
         content: limitedContent,
-        metadata: metadata,
+        metadata,
         timestamp: new Date()
       },
-      refresh: "wait_for"  // Weniger häufige Aktualisierungen
+      refresh: "wait_for"
     });
+    log('Dokument gespeichert', 'debug');
   } catch (error) {
-    log(`Fehler beim Speichern in Elasticsearch: ${error.message}`, 'error');
+    log(`Speichern fehlgeschlagen: ${error.message}`, 'error');
   }
 }
 
-// Health-Check-Endpunkt für Monitoring
+// Intelligente Ollama-Anfrage (unterstützt beide API-Endpunkte)
+async function makeOllamaRequest(prompt, model, system, options, stream = false, temperature = 0.7) {
+  const requestOptions = { responseType: stream ? 'stream' : 'json' };
+  
+  if (preferredApiEndpoint === 'chat') {
+    const messages = [];
+    if (system) messages.push({ role: "system", content: system });
+    messages.push({ role: "user", content: prompt });
+    
+    try {
+      return await axios.post(`${ollamaBaseUrl}/api/chat`, {
+        messages, model: model || 'llama3:8b', stream, options, temperature
+      }, requestOptions);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        preferredApiEndpoint = 'generate';
+        return makeOllamaRequest(prompt, model, system, options, stream, temperature);
+      }
+      throw error;
+    }
+  } else {
+    try {
+      return await axios.post(`${ollamaBaseUrl}/api/generate`, {
+        prompt, model: model || 'llama3:8b', stream, options, system, temperature
+      }, requestOptions);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        preferredApiEndpoint = 'chat';
+        return makeOllamaRequest(prompt, model, system, options, stream, temperature);
+      }
+      throw error;
+    }
+  }
+}
+
+// Format-Normalisierung zwischen API-Versionen
+function extractResponseData(ollamaResponse, endpoint) {
+  if (!ollamaResponse?.data) return { response: "" };
+  
+  if (endpoint === 'chat') {
+    return {
+      response: ollamaResponse.data.message?.content || "",
+      prompt_eval_count: ollamaResponse.data.prompt_eval_count,
+      eval_count: ollamaResponse.data.eval_count,
+      done_reason: ollamaResponse.data.done_reason
+    };
+  } else {
+    return ollamaResponse.data;
+  }
+}
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json({ limit: '2mb' }));
+if (DEBUG_MODE) {
+  app.use((req, res, next) => {
+    log(`Anfrage: ${req.method} ${req.url}`, 'debug');
+    next();
+  });
+}
+
+// Health-Check
 app.get('/api/health', async (req, res) => {
-  // Prüfe auch Elasticsearch-Verbindung
   const elasticsearchStatus = await esClient.ping().catch(() => false);
+  let ollamaStatus = false, ollamaVersionString = "unbekannt";
+  
+  try {
+    const ollamaCheck = await axios.get(`${ollamaBaseUrl}/api/version`);
+    ollamaStatus = true;
+    ollamaVersionString = ollamaCheck.data.version || "unbekannt";
+  } catch (error) {
+    log(`Ollama nicht erreichbar: ${error.message}`, 'warn');
+  }
   
   res.json({ 
-    status: 'ok', 
+    status: ollamaStatus && elasticsearchStatus ? 'ok' : 'degraded', 
     gateway: 'rag-gateway', 
-    version: '1.0.0',
-    elasticsearch: elasticsearchStatus ? 'connected' : 'disconnected'
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    elasticsearch: elasticsearchStatus ? 'connected' : 'disconnected',
+    ollama: ollamaStatus ? 'connected' : 'disconnected',
+    ollamaVersion: ollamaVersionString,
+    preferredApiEndpoint
   });
 });
 
-// Speichereffizienter Proxy für Ollama generate API
+// Generate API
 app.post('/api/generate', async (req, res) => {
   try {
-    const { prompt, model, system, options } = req.body;
+    const { prompt, model, system, options, stream, temperature } = req.body;
     
-    if (!prompt || prompt.trim().length === 0) {
+    if (!prompt?.trim()) {
       return res.status(400).json({ error: 'Prompt ist erforderlich' });
     }
     
-    // RAG: Relevante Dokumente abrufen
+    // RAG-Erweiterung
     const relevantDocs = await retrieveRelevantDocuments(prompt);
-    
-    // Kontext aus relevanten Dokumenten erstellen
     let ragContext = '';
     if (relevantDocs.length > 0) {
       ragContext = 'Hier sind einige relevante Informationen:\n\n' + 
@@ -269,63 +291,64 @@ app.post('/api/generate', async (req, res) => {
         '\n\nBerücksichtige diese Informationen bei deiner Antwort:';
     }
     
-    // Erweiterten Prompt erstellen
     const enhancedPrompt = ragContext ? `${ragContext}\n\n${prompt}` : prompt;
     
-    // Request an Ollama senden
-    const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/generate`, {
-      model: model || 'llama3:8b',
-      prompt: enhancedPrompt,
-      system: system,
-      options: options,
-      stream: false
-    });
+    // Anfrage an Ollama
+    const ollamaResponse = await makeOllamaRequest(
+      enhancedPrompt,
+      model || 'llama3:8b',
+      system,
+      options,
+      stream || false,
+      temperature || 0.7
+    );
     
-    // Speichern der Antwort in Elasticsearch im Hintergrund
-    if (ollamaResponse.data.response) {
-      // Ausführung im Hintergrund ohne await
+    if (stream) {
+      ollamaResponse.data.pipe(res);
+      return;
+    }
+    
+    const responseData = extractResponseData(ollamaResponse, preferredApiEndpoint);
+    
+    // Antwort speichern
+    if (responseData.response) {
       saveToElasticsearch(
-        ollamaResponse.data.response,
+        responseData.response,
         { 
           query: prompt, 
-          model: model, 
+          model, 
           enhanced: !!ragContext,
           ragDocsCount: relevantDocs.length
         }
-      ).catch(() => {/* Fehler ignorieren */});
+      ).catch(() => {});
     }
     
-    // Antwort zurück an den Client
+    // Antwort zurückgeben
     res.json({
-      ...ollamaResponse.data,
+      ...responseData,
       rag: {
         enhanced: !!ragContext,
         docsCount: relevantDocs.length
       }
     });
   } catch (error) {
-    log(`Fehler bei der Verarbeitung der Anfrage: ${error.message}`, 'error');
+    log(`Fehler bei /api/generate: ${error.message}`, 'error');
     res.status(500).json({ error: 'Interner Serverfehler', details: error.message });
   }
 });
 
-// Chat-Completions-Endpunkt für OpenAI-Kompatibilität
+// OpenAI-kompatibler Chat-API Endpunkt
 app.post('/api/chat/completions', async (req, res) => {
   try {
-    log('Chat-Completions-Anfrage empfangen (OpenAI-Kompatibilitätsmodus)', 'info');
     const { messages, model, stream, temperature } = req.body;
-    
-    // Extrahiere den letzten Benutzer-Prompt aus den Nachrichten
     const lastUserMessage = messages.filter(m => m.role === 'user').pop();
     
     if (!lastUserMessage) {
       return res.status(400).json({ error: 'Keine Benutzernachricht gefunden' });
     }
     
-    // RAG: Relevante Dokumente für den letzten Prompt abrufen
+    // RAG-Erweiterung
     const relevantDocs = await retrieveRelevantDocuments(lastUserMessage.content);
-    
-    // Erweitere die Systemnachricht oder füge eine hinzu, wenn keine vorhanden ist
     const systemMessage = messages.find(m => m.role === 'system');
     let enhancedMessages = [...messages];
     
@@ -335,102 +358,87 @@ app.post('/api/chat/completions', async (req, res) => {
         '\n\nBerücksichtige diese Informationen bei deiner Antwort.';
       
       if (systemMessage) {
-        // Aktualisiere die vorhandene Systemnachricht
         const systemIndex = enhancedMessages.findIndex(m => m.role === 'system');
         enhancedMessages[systemIndex] = {
           ...systemMessage,
           content: `${systemMessage.content}\n\n${ragContext}`
         };
       } else {
-        // Füge eine neue Systemnachricht hinzu
-        enhancedMessages.unshift({
-          role: 'system',
-          content: ragContext
-        });
+        enhancedMessages.unshift({ role: 'system', content: ragContext });
       }
     }
     
-    log(`Leite Anfrage an Ollama /api/chat weiter`, 'info');
-    // Request an Ollama senden mit dem korrekten Endpunkt /api/chat
+    // Anfrage an Ollama
     const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
       messages: enhancedMessages,
       model: model || 'llama3:8b',
-      stream: stream,
-      temperature: temperature
+      stream,
+      temperature
     }, {
       responseType: stream ? 'stream' : 'json'
     });
     
     if (stream) {
-      // Stream-Modus: Leite die Antwort direkt weiter
       ollamaResponse.data.pipe(res);
-    } else {
-      // Speichern der Antwort in Elasticsearch im Hintergrund
-      const assistantResponse = ollamaResponse.data.message?.content;
-      if (assistantResponse) {
-        // Asynchron und nicht-blockierend
-        saveToElasticsearch(
-          assistantResponse,
-          {
-            query: lastUserMessage.content,
-            model: model,
-            enhanced: relevantDocs.length > 0,
-            ragDocsCount: relevantDocs.length
-          }
-        ).catch(() => {/* Fehler ignorieren */});
-      }
-      
-      // Formatiere die Antwort im OpenAI-Format für WebUI
-      const openAICompatibleResponse = {
-        id: `chatcmpl-${Date.now()}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model: model || "ollama_model",
-        choices: [{
-          index: 0,
-          message: {
-            role: "assistant",
-            content: assistantResponse || "",
-          },
-          finish_reason: ollamaResponse.data.done_reason || "stop"
-        }],
-        usage: {
-          prompt_tokens: ollamaResponse.data.prompt_eval_count || 0,
-          completion_tokens: ollamaResponse.data.eval_count || 0,
-          total_tokens: (ollamaResponse.data.prompt_eval_count || 0) + (ollamaResponse.data.eval_count || 0)
-        },
-        // Zusätzliche RAG-Informationen
-        rag_info: {
-          enhanced: relevantDocs.length > 0,
-          docsCount: relevantDocs.length
-        }
-      };
-      
-      res.json(openAICompatibleResponse);
+      return;
     }
+    
+    // Antwort speichern
+    const assistantResponse = ollamaResponse.data.message?.content;
+    if (assistantResponse) {
+      saveToElasticsearch(
+        assistantResponse,
+        {
+          query: lastUserMessage.content,
+          model,
+          enhanced: relevantDocs.length > 0,
+          ragDocsCount: relevantDocs.length
+        }
+      ).catch(() => {});
+    }
+    
+    // OpenAI-kompatible Antwort
+    res.json({
+      id: `chatcmpl-${Date.now()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: model || "ollama_model",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: assistantResponse || "",
+        },
+        finish_reason: ollamaResponse.data.done_reason || "stop"
+      }],
+      usage: {
+        prompt_tokens: ollamaResponse.data.prompt_eval_count || 0,
+        completion_tokens: ollamaResponse.data.eval_count || 0,
+        total_tokens: (ollamaResponse.data.prompt_eval_count || 0) + (ollamaResponse.data.eval_count || 0)
+      },
+      rag_info: {
+        enhanced: relevantDocs.length > 0,
+        docsCount: relevantDocs.length
+      }
+    });
   } catch (error) {
-    log(`Fehler bei der Verarbeitung der Chat-Anfrage: ${error.message}`, 'error');
+    log(`Fehler bei /api/chat/completions: ${error.message}`, 'error');
     res.status(500).json({ error: 'Interner Serverfehler', details: error.message });
   }
 });
 
-// Direkter Proxy für Ollama /api/chat Endpunkt
+// Nativer Ollama Chat-API Endpunkt
 app.post('/api/chat', async (req, res) => {
   try {
-    log('Native Ollama Chat-Anfrage empfangen', 'info');
     const { messages, model, stream, temperature } = req.body;
-    
-    // Extrahiere den letzten Benutzer-Prompt aus den Nachrichten
     const lastUserMessage = messages.filter(m => m.role === 'user').pop();
     
     if (!lastUserMessage) {
       return res.status(400).json({ error: 'Keine Benutzernachricht gefunden' });
     }
     
-    // RAG: Relevante Dokumente für den letzten Prompt abrufen
+    // RAG-Erweiterung (identisch zu /api/chat/completions)
     const relevantDocs = await retrieveRelevantDocuments(lastUserMessage.content);
-    
-    // Erweitere die Systemnachricht oder füge eine hinzu, wenn keine vorhanden ist
     const systemMessage = messages.find(m => m.role === 'system');
     let enhancedMessages = [...messages];
     
@@ -440,110 +448,93 @@ app.post('/api/chat', async (req, res) => {
         '\n\nBerücksichtige diese Informationen bei deiner Antwort.';
       
       if (systemMessage) {
-        // Aktualisiere die vorhandene Systemnachricht
         const systemIndex = enhancedMessages.findIndex(m => m.role === 'system');
         enhancedMessages[systemIndex] = {
           ...systemMessage,
           content: `${systemMessage.content}\n\n${ragContext}`
         };
       } else {
-        // Füge eine neue Systemnachricht hinzu
-        enhancedMessages.unshift({
-          role: 'system',
-          content: ragContext
-        });
+        enhancedMessages.unshift({ role: 'system', content: ragContext });
       }
     }
     
-    // Request an Ollama senden
+    // Anfrage an Ollama
     const ollamaResponse = await axios.post(`${ollamaBaseUrl}/api/chat`, {
       messages: enhancedMessages,
       model: model || 'llama3:8b',
-      stream: stream,
-      temperature: temperature
+      stream,
+      temperature
     }, {
       responseType: stream ? 'stream' : 'json'
     });
     
     if (stream) {
-      // Stream-Modus: Leite die Antwort direkt weiter
       ollamaResponse.data.pipe(res);
-    } else {
-      // Speichern der Antwort in Elasticsearch im Hintergrund
-      const assistantResponse = ollamaResponse.data.message?.content;
-      if (assistantResponse) {
-        // Asynchron und nicht-blockierend
-        saveToElasticsearch(
-          assistantResponse,
-          {
-            query: lastUserMessage.content,
-            model: model,
-            enhanced: relevantDocs.length > 0,
-            ragDocsCount: relevantDocs.length
-          }
-        ).catch(() => {/* Fehler ignorieren */});
-      }
-      
-      // Hier direkt das Original-Format von Ollama beibehalten, mit RAG-Info
-      const enhancedResponse = {
-        ...ollamaResponse.data,
-        rag_info: {
-          enhanced: relevantDocs.length > 0,
-          docsCount: relevantDocs.length
-        }
-      };
-      
-      res.json(enhancedResponse);
+      return;
     }
+    
+    // Antwort speichern
+    const assistantResponse = ollamaResponse.data.message?.content;
+    if (assistantResponse) {
+      saveToElasticsearch(
+        assistantResponse,
+        {
+          query: lastUserMessage.content,
+          model,
+          enhanced: relevantDocs.length > 0,
+          ragDocsCount: relevantDocs.length
+        }
+      ).catch(() => {});
+    }
+    
+    // Antwort im nativen Format zurückgeben
+    res.json({
+      ...ollamaResponse.data,
+      rag_info: {
+        enhanced: relevantDocs.length > 0,
+        docsCount: relevantDocs.length
+      }
+    });
   } catch (error) {
-    log(`Fehler bei der Verarbeitung der nativen Chat-Anfrage: ${error.message}`, 'error');
+    log(`Fehler bei /api/chat: ${error.message}`, 'error');
     res.status(500).json({ error: 'Interner Serverfehler', details: error.message });
   }
 });
 
-// Verwende einen Router für alle anderen API-Anfragen
+// Allgemeiner API-Proxy
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
 
-// Allgemeiner Proxy für alle anderen API-Anfragen an Ollama
 apiRouter.all('/:path(*)', async (req, res) => {
-  // Ignoriere bereits definierte Routen
   if (['chat/completions', 'chat', 'generate', 'health', 'rag/documents'].includes(req.params.path)) {
-    return;
+    return; // Bereits definierte Routen überspringen
   }
   
   try {
     const ollamaPath = `/api/${req.params.path}`;
-    log(`Proxy für Pfad: ${ollamaPath}`, 'info');
-    
     const ollamaUrl = `${ollamaBaseUrl}${ollamaPath}`;
-    log(`Leite Anfrage an ${ollamaUrl} weiter`, 'info');
+    log(`Proxy: ${req.method} ${ollamaUrl}`, 'debug');
     
     const response = await axios({
       method: req.method,
       url: ollamaUrl,
       data: req.method !== 'GET' ? req.body : undefined,
-      headers: { 
-        'Content-Type': 'application/json' 
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
     
     res.status(response.status).json(response.data);
   } catch (error) {
-    log(`Fehler beim Proxy zu Ollama: ${error.message}`, 'error');
-    if (error.response) {
-      log(`Antwort-Status: ${error.response.status}`, 'error');
-      log(`Antwort-Daten: ${JSON.stringify(error.response.data)}`, 'error');
-    }
-    res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+    log(`Proxy-Fehler: ${error.message}`, 'error');
+    res.status(error.response?.status || 500).json(
+      error.response?.data || { error: error.message }
+    );
   }
 });
 
-// Endpunkt zum Speichern von Dokumenten in Elasticsearch
+// RAG-Dokumente API
 app.post('/api/rag/documents', async (req, res) => {
   try {
     const { content, metadata } = req.body;
-    
     if (!content) {
       return res.status(400).json({ error: 'Content ist erforderlich' });
     }
@@ -551,12 +542,11 @@ app.post('/api/rag/documents', async (req, res) => {
     await saveToElasticsearch(content, metadata);
     res.json({ success: true, message: 'Dokument gespeichert' });
   } catch (error) {
-    log(`Fehler beim Speichern des Dokuments: ${error.message}`, 'error');
+    log(`Fehler beim Speichern: ${error.message}`, 'error');
     res.status(500).json({ error: 'Fehler beim Speichern', details: error.message });
   }
 });
 
-// Endpunkt zum Abrufen von Dokumenten
 app.get('/api/rag/documents', async (req, res) => {
   try {
     const { query, limit } = req.query;
@@ -565,37 +555,31 @@ app.get('/api/rag/documents', async (req, res) => {
     const docs = await retrieveRelevantDocuments(query || '', maxResults);
     res.json(docs);
   } catch (error) {
-    log(`Fehler beim Abrufen der Dokumente: ${error.message}`, 'error');
+    log(`Fehler beim Abrufen: ${error.message}`, 'error');
     res.status(500).json({ error: 'Fehler beim Abrufen', details: error.message });
   }
 });
 
 // Server starten
 app.listen(port, async () => {
-  log(`RAG-Gateway läuft auf Port ${port}`);
-  log(`Ollama-Basis-URL: ${ollamaBaseUrl}`);
-  log(`Elasticsearch-URL: ${elasticUrl}`);
+  log(`RAG-Gateway läuft auf Port ${port}`, 'info');
+  log(`Ollama-URL: ${ollamaBaseUrl}, Elasticsearch: ${elasticUrl}`, 'info');
   
-  // Prüfe sofort die Erreichbarkeit von Ollama
+  // Teste Ollama-Verbindung
   try {
-    const ollamaResponse = await axios.get(`${ollamaBaseUrl}/api/version`);
-    log(`Ollama ist erreichbar, Version: ${ollamaResponse.data.version}`, 'info');
+    const versionResponse = await axios.get(`${ollamaBaseUrl}/api/version`);
+    log(`Ollama ist erreichbar, Version: ${versionResponse.data.version}`, 'info');
+    await checkOllamaVersion();
   } catch (error) {
     log(`Ollama ist nicht erreichbar: ${error.message}`, 'error');
-    log('Stelle sicher, dass Ollama läuft und unter dieser URL erreichbar ist', 'error');
   }
   
-  // Server startet unabhängig vom Elasticsearch-Status
-  log('Versuche Elasticsearch-Verbindung herzustellen und Setup durchzuführen...', 'info');
-  
-  // Verzögerter Verbindungsaufbau, damit Elasticsearch Zeit hat zu starten
+  // Elasticsearch aufsetzen
   setTimeout(async () => {
     try {
       await setupElasticsearch();
-      log('Elasticsearch-Setup abgeschlossen', 'info');
     } catch (e) {
-      log(`Elasticsearch-Setup fehlgeschlagen, Gateway bleibt trotzdem aktiv: ${e.message}`, 'warn');
-      log('RAG-Funktionalität wird eingeschränkt sein, bis Elasticsearch verfügbar ist', 'warn');
+      log(`Elasticsearch-Setup fehlgeschlagen: ${e.message}`, 'warn');
     }
-  }, 10000); // 10 Sekunden Verzögerung
+  }, 5000);
 });
