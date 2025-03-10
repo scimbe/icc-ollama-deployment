@@ -1,0 +1,24 @@
+{
+  "name": "ollama-rag-gateway",
+  "version": "1.0.0",
+  "description": "RAG-Gateway für Ollama mit Elasticsearch-Integration ohne lizenzpflichtige Komponenten",
+  "main": "rag-gateway.js",
+  "scripts": {
+    "start": "node rag-gateway.js",
+    "dev": "nodemon rag-gateway.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.10.0",
+    "axios": "^1.6.2",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

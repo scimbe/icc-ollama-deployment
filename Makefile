@@ -5,6 +5,7 @@ include configs/config.sh
 
 .PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model list-models finetune-simple convert-training-data create-template test-model
 
+
 help:
 	@echo "Available commands:"
 	@echo "  make deploy         - Deploy both Ollama and WebUI"
@@ -30,6 +31,11 @@ help:
 	@echo "  make finetune-simple MODEL=llama3:8b NAME=haw-custom DATA=data.jsonl - Simple finetuning"
 	@echo "  make convert-training-data INPUT=file.jsonl OUTPUT=out.txt - Convert training data"
 	@echo "  make create-template TYPE=academic NAME=my-template - Create a modelfile template"
+	@echo ""
+	@echo "RAG Commands:"
+	@echo "  make rag-setup                   - Setup RAG infrastructure"
+	@echo "  make rag-stop                    - Stop RAG infrastructure"
+	@echo "  make rag-upload FILE=path/to/file.txt - Upload documents for RAG"
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make port-forward   - Start port forwarding for Ollama and WebUI"
@@ -94,6 +100,7 @@ list-models:
 	@echo "Listing installed models..."
 	./scripts/list-models.sh
 
+
 # Model Testing
 test-model:
 	@if [ -z "$(MODEL)" ]; then \
@@ -136,3 +143,4 @@ create-template:
 	OUTPUT=$${OUTPUT:-"templates"}; \
 	echo "Creating template of type $$TYPE in language $$LANG as $$NAME"; \
 	./scripts/create-template.sh -t $$TYPE -l $$LANG -o $$OUTPUT $$NAME
+
