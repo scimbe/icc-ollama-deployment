@@ -19,7 +19,7 @@ services:
       - es_data:/usr/share/elasticsearch/data
     networks:
       - rag-network
-    mem_limit: 512m  # Stark reduziertes Speicherlimit
+    mem_limit: 1Gi  # Stark reduziertes Speicherlimit
     ulimits:
       memlock:
         soft: -1
@@ -40,7 +40,7 @@ services:
       - elasticsearch
     networks:
       - rag-network
-    mem_limit: 384m  # Stark reduziertes Speicherlimit
+    mem_limit: 1Gi  # Stark reduziertes Speicherlimit
 
   rag-gateway:
     build:
@@ -60,7 +60,7 @@ services:
       - rag-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    mem_limit: 384m  # Speicherlimit hinzugefügt
+    mem_limit: 1Gi  # Speicherlimit hinzugefügt
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -73,7 +73,7 @@ services:
       - rag-gateway
     networks:
       - rag-network
-    mem_limit: 384m  # Speicherlimit hinzugefügt
+    mem_limit: 1Gi  # Speicherlimit hinzugefügt
 
 networks:
   rag-network:
