@@ -3,7 +3,7 @@
 # Load configuration
 include configs/config.sh
 
-.PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model list-models
+.PHONY: deploy deploy-ollama deploy-webui check logs shell cleanup help gpu-test gpu-monitor gpu-bench gpu-compat port-forward pull-model list-models rag-setup rag-stop rag-upload
 
 help:
 	@echo "Available commands:"
@@ -24,6 +24,11 @@ help:
 	@echo "Model Management:"
 	@echo "  make pull-model MODEL=llama3:8b   - Pull an Ollama model"
 	@echo "  make list-models                  - List installed models"
+	@echo ""
+	@echo "RAG Commands:"
+	@echo "  make rag-setup                   - Setup RAG infrastructure"
+	@echo "  make rag-stop                    - Stop RAG infrastructure"
+	@echo "  make rag-upload FILE=path/to/file.txt - Upload documents for RAG"
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make port-forward   - Start port forwarding for Ollama and WebUI"
@@ -87,3 +92,20 @@ pull-model:
 list-models:
 	@echo "Listing installed models..."
 	./scripts/list-models.sh
+
+# RAG Commands
+rag-setup:
+	@echo "Setting up RAG infrastructure..."
+	./scripts/setup-rag.sh
+
+rag-stop:
+	@echo "Stopping RAG infrastructure..."
+	./scripts/stop-rag.sh
+
+rag-upload:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Error: No file specified. Usage: make rag-upload FILE=path/to/file.txt"; \
+		exit 1; \
+	fi
+	@echo "Uploading document $(FILE) for RAG..."
+	./scripts/upload-rag-documents.sh $(FILE)

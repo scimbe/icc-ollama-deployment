@@ -1,10 +1,12 @@
 # ICC Ollama Deployment
 
-Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung auf der HAW Hamburg Informatik Compute Cloud (ICC).
+Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung auf der HAW Hamburg Informatik Compute Cloud (ICC). Jetzt auch mit **RAG-Unterstützung** ohne Enterprise-Lizenzen!
 
 ## Übersicht
 
-Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt.
+Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt. 
+
+**NEU**: RAG-Unterstützung (Retrieval-Augmented Generation) mit lokalen Elasticsearch und Kibana Containern, ohne kostenpflichtige Enterprise-Lizenzen!
 
 ## Inhaltsverzeichnis
 
@@ -14,6 +16,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [Detaillierte Anleitung](#detaillierte-anleitung)
 - [GPU-Ressourcen skalieren](#gpu-ressourcen-skalieren)
 - [GPU-Testen und Überwachen](#gpu-testen-und-überwachen)
+- [RAG-Unterstützung](#rag-unterstützung) 👈 **NEU!**
 - [Architektur](#architektur)
 - [Troubleshooting](#troubleshooting)
 - [Wartung](#wartung)
@@ -23,6 +26,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 
 - HAW Hamburg infw-Account mit Zugang zur ICC
 - kubectl installiert
+- Docker und Docker Compose (für RAG-Funktionalität)
 - (Optional) Terraform installiert (Nur für das lokale WebUI-Deployment)
 - Eine aktive VPN-Verbindung zum HAW-Netz (wenn außerhalb des HAW-Netzes)
 - (Optional) Make installiert für vereinfachte Befehle
@@ -133,21 +137,72 @@ Führen Sie Leistungstests für ein spezifisches Modell durch:
 make gpu-bench MODEL=llama3:8b
 ```
 
-### GPU-Kompatibilität prüfen
+## RAG-Unterstützung
 
-Überprüfen Sie die vollständige GPU-Konfiguration und -Kompatibilität:
+Neu hinzugefügt: RAG-Unterstützung (Retrieval-Augmented Generation), die ohne Enterprise-Lizenzen auskommt!
+
+### Was ist RAG?
+
+RAG (Retrieval-Augmented Generation) verbindet LLMs mit externen Wissensdatenbanken. Vorteile:
+- Reduzierte Halluzinationen durch Zugriff auf verifizierte Informationen
+- Zugriff auf aktuellere Informationen als im Trainingskorpus
+- Möglichkeit zur Quellenangabe
+
+### Schnellstart RAG
 
 ```bash
-./scripts/check-gpu-compatibility.sh
-# oder
-make gpu-compat
+# Port-Forwarding für Ollama starten (in separatem Terminal)
+make port-forward
+
+# RAG-Infrastruktur lokal starten
+./scripts/setup-rag.sh
+
+# Test-Dokument hochladen
+./scripts/upload-rag-documents.sh rag/data/sample-document.md
+
+# Öffnen Sie http://localhost:3000 im Browser
 ```
+
+### RAG-Komponenten
+
+Die RAG-Lösung besteht aus folgenden Komponenten:
+
+1. **Elasticsearch**: Speichert und indiziert Dokumente und Embeddings
+2. **Kibana**: Weboberfläche für Elasticsearch zur Datenvisualisierung
+3. **RAG-Gateway**: Vermittelt zwischen WebUI, Elasticsearch und Ollama
+4. **Open WebUI**: Bleibt unverändert, kommuniziert aber mit dem Gateway
+
+Alle Komponenten außer Ollama werden als lokale Docker-Container ausgeführt:
+
+```
+┌─── Lokale Umgebung ────────────────────┐     ┌─── ICC Kubernetes Cluster ───┐
+│                                         │     │                              │
+│ Open WebUI → RAG Gateway → Elasticsearch│ ←→  │ Ollama (mit GPU-Support)    │
+│     ↑                     ↑             │     │                              │
+│     └─────────────────────┘             │     │                              │
+│                 ↑                       │     │                              │
+│               Kibana                    │     │                              │
+│                                         │     │                              │
+└─────────────────────────────────────────┘     └──────────────────────────────┘
+```
+
+### Keine Enterprise-Lizenzen erforderlich
+
+Diese RAG-Implementierung benötigt keine kostenpflichtigen Lizenzen:
+
+- Verwendet die kostenlose Basic-Lizenz von Elasticsearch
+- Implementiert ein einfaches, eigenes Embedding-Verfahren
+- Funktioniert mit allen Ollama-Modellen
+
+Weitere Details zur RAG-Integration finden Sie in der [RAG-Dokumentation](RAG-README.md).
 
 ## Architektur
 
 Einen Überblick über die Systemarchitektur und die Komponenten des Projekts finden Sie in der [ARCHITECTURE.md](ARCHITECTURE.md) Datei.
 
 ## Troubleshooting
+
+### Ollama und GPU
 
 Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
 
@@ -159,6 +214,30 @@ Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
 
 Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#8-fehlerbehebung).
 
+### RAG-Komponenten
+
+Bei Problemen mit der RAG-Funktionalität:
+
+1. **WebUI verbindet nicht mit RAG-Gateway**:
+   - Prüfen Sie, ob das RAG-Gateway läuft: `docker ps | grep rag-gateway`
+   - Prüfen Sie die Logs: `docker logs rag-gateway`
+
+2. **Elasticsearch startet nicht**:
+   - Prüfen Sie, ob genügend Arbeitsspeicher verfügbar ist
+   - Prüfen Sie die Logs: `docker logs elasticsearch`
+
+3. **Keine Dokumente gefunden**:
+   - Stellen Sie sicher, dass Sie Dokumente hochgeladen haben
+   - Prüfen Sie den Elasticsearch-Index in Kibana: http://localhost:5601
+
 ## Wartung
 
-Die neuen GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet.
+Die automatisierten Skripte erleichtern die Wartung des Systems:
+
+- **GPU-Komponenten**: Nutzen Sie die GPU-Test- und Monitoring-Werkzeuge für kontinuierliche Überwachung
+- **RAG-Komponenten**: Die Docker-Container können einfach aktualisiert und neu gestartet werden
+- **Ollama-Updates**: Aktualisieren Sie das Deployment mit dem neuesten Ollama-Image
+
+## Lizenz
+
+Dieses Projekt steht unter der [MIT-Lizenz](LICENSE).
