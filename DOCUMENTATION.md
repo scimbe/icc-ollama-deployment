@@ -269,10 +269,7 @@ make gpu-monitor
 Die Überwachung kann angepasst werden:
 ```bash
 # 10 Messungen im 5-Sekunden-Intervall mit kompakter Ausgabe
-./scripts/monitor-gpu.sh -i 5 -c 10 -f compact
-
-# Speichern der Daten in CSV-Format
-./scripts/monitor-gpu.sh -f csv -s gpu_metrics.csv
+./scripts/monitor-gpu.sh -i 5 
 ```
 
 ### Ollama API-Client für Tests
