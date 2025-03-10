@@ -162,10 +162,10 @@ Dokumente können über das Befehlszeilenskript `upload-rag-documents.sh` hochge
 
 ```bash
 # Einzeldokument hochladen
-./scripts/upload-rag-documents.sh pfad/zur/datei.txt
+./scripts/upload-rag-documents.sh --direct pfad/zur/datei.txt
 
 # Mit Optionen
-./scripts/upload-rag-documents.sh --type markdown --split true --chunk-size 500 pfad/zur/datei.md
+./scripts/upload-rag-documents.sh --direct --type markdown --split true --chunk-size 500 pfad/zur/datei.md
 ```
 
 ### Mögliche Erweiterungen

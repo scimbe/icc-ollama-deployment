@@ -100,7 +100,7 @@ Die Verbindung zu Ollama in der ICC erfolgt über Port-Forwarding:
 
 2. **Dokumente für RAG hochladen**:
    ```bash
-   ./scripts/upload-rag-documents.sh pfad/zur/datei.txt
+   ./scripts/upload-rag-documents.sh --direct pfad/zur/datei.txt
    ```
    Dieses Skript lädt Dokumente in Elasticsearch hoch, die dann für RAG verwendet werden.
 
@@ -120,7 +120,7 @@ Die Verbindung zu Ollama in der ICC erfolgt über Port-Forwarding:
 Nutzen Sie das Skript `upload-rag-documents.sh`, um eigene Dokumente hochzuladen:
 
 ```bash
-./scripts/upload-rag-documents.sh --type markdown meine_doku.md
+./scripts/upload-rag-documents.sh --direct --type markdown meine_doku.md
 ```
 
 Unterstützte Dokumenttypen:

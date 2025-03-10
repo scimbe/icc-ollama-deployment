@@ -158,7 +158,7 @@ RAG (Retrieval-Augmented Generation) verbindet LLMs mit externen Wissensdatenban
 ./scripts/setup-rag.sh
 
 # Test-Dokument hochladen
-./scripts/upload-rag-documents.sh rag/data/sample-document.md
+./scripts/upload-rag-documents.sh --direct rag/data/sample-document.md
 
 # Öffnen Sie http://localhost:3000 im Browser
 ```
