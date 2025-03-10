@@ -2,7 +2,7 @@
 
 Diese Repository-Dokumentation wurde zur besseren Übersichtlichkeit in zwei spezifische Dokumente aufgeteilt:
 
-- **[DEFAULT-README.md](DEFAULT-README.md)**: Beinhaltet die standardmäßige Installation und Nutzung von Ollama ohne RAG-Integration.
+- **[DEFAULT-README.md](DEFAULT-README.md)**: Beinhaltet die standardmäßige Installation und Nutzung von Ollama mit kurzer RAG-Integration.
 
 - **[RAG-README.md](RAG-README.md)**: Umfasst detaillierte Informationen zur erweiterten Installation und Konfiguration von Ollama in Verbindung mit Retrieval-Augmented Generation (RAG).
 
