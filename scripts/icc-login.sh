@@ -1,5 +1,5 @@
 #!/bin/bash
-
+source configs/config.sh
 # Skript zum Öffnen der ICC-Login-Seite und Hilfe beim Download der Kubeconfig
 set -e
 
@@ -106,7 +106,8 @@ echo
 # Teste die Verbindung
 echo -e "${BLUE}=== Verbindungstest ===${NC}"
 echo -e "Teste Verbindung zur ICC..."
-if kubectl cluster-info  &> /dev/null; then
+CURRENT_NS=$(kubectl config view --minify -o jsonpath='{..namespace}')
+if kubectl cluster-info -n $CURRENT_NS  &> /dev/null; then
     echo -e "${GREEN}✓${NC} Verbindung erfolgreich hergestellt!"
     echo -e "Ihre aktueller Kontext ist: $(kubectl config current-context)"
     
@@ -116,7 +117,7 @@ if kubectl cluster-info  &> /dev/null; then
     echo -e "Ihr aktueller Namespace ist: ${YELLOW}$CURRENT_NS${NC}"
     
     echo -e "\nVerfügbare Subnamespaces:"
-    kubectl get subns 2>/dev/null || echo -e "${YELLOW}Keine Subnamespaces gefunden oder keine Berechtigung.${NC}"
+    kubectl get subns -n $CURRENT_NS 2>/dev/null || echo -e "${YELLOW}Keine Subnamespaces gefunden oder keine Berechtigung.${NC}"
 else
     echo -e "${YELLOW}Konnte keine Verbindung zur ICC herstellen.${NC}"
     echo -e "Bitte überprüfen Sie Ihre VPN-Verbindung und die Kubeconfig-Datei."
