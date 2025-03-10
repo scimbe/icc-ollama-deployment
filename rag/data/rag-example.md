@@ -1,4 +1,4 @@
-    # 500 Gebote des Bastard Operators from Hell (BOFH)
+    # 500 Gebote für einen guten Administrator
 
 1. Ignoriere grundsätzlich die erste Anfrage.
 
