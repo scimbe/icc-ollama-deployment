@@ -1,0 +1,10 @@
+[
+    {
+        "prompt": "Was ist eine gute Praxis für Administratoren in Bezug auf Regel 1?",
+        "response": "Ignoriere grundsätzlich die erste Anfrage."
+    },
+    {
+        "prompt": "Was ist eine gute Praxis für Administratoren in Bezug auf Regel 2?",
+        "response": "Antworte immer verzögert."
+    }
+]
