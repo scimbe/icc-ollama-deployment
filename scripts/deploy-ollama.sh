@@ -70,6 +70,7 @@ spec:
               protocol: TCP
           resources:
             limits:
+              cpu: 2
               memory: "$MEMORY_LIMIT"$GPU_RESOURCES
 ---
 apiVersion: v1
