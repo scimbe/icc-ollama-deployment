@@ -17,8 +17,8 @@ export GPU_COUNT=1  # Anzahl der GPUs (normalerweise 1)
 export GPU_FORMAT="standard"  # Verwenden Sie "extended" für erweiterte Syntax, wenn Standard nicht funktioniert
 
 # Ressourcenlimits
-export MEMORY_LIMIT="4Gi"  # Speicherlimit
+export MEMORY_LIMIT="1Gi"  # Speicherlimit, Exklusiv ollama up to 4 in the standart ICC quota
 
-# Zugriffskonfiguration
+# Zugriffskonfiguration - Noch nicht getestet
 export CREATE_INGRESS=false  # Auf true setzen, wenn ein Ingress erstellt werden soll
 export DOMAIN_NAME="your-domain.informatik.haw-hamburg.de"  # Nur relevant, wenn CREATE_INGRESS=true

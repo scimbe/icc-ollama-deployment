@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.13  # Ältere, stabilere Version
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=false  # ML-Features deaktivieren
+      - xpack.watcher.enabled=false  # Watcher deaktivieren
+      - xpack.graph.enabled=false  # Graph deaktivieren
+      - xpack.monitoring.enabled=false  # Monitoring deaktivieren
+      - "ES_JAVA_OPTS=-Xms128m -Xmx128m"  # Minimaler Heap-Speicher
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - rag-network
+    mem_limit: 2G  # Stark reduziertes Speicherlimit
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.13  # Passende Kibana-Version
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_MAXPAYLOADBYTES=1048576  # Reduziert max. Payload-Größe
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - rag-network
+    mem_limit: 2G  # Stark reduziertes Speicherlimit
+
+  rag-gateway:
+    build:
+      context: ./gateway
+    container_name: rag-gateway
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_INDEX=ollama-rag
+      - PORT=3100
+      # - NODE_OPTIONS=--max_old_space_size=256  # Reduzierter Node.js Speicherverbrauch
+    ports:
+      - "3100:3100"
+    depends_on:
+      - elasticsearch
+    networks:
+      - rag-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 2G  # Speicherlimit hinzugefügt
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    environment:
+      - OLLAMA_BASE_URL=http://rag-gateway:3100
+    ports:
+      - "3000:8080"
+    depends_on:
+      - rag-gateway
+    networks:
+      - rag-network
+    mem_limit: 2G  # Speicherlimit hinzugefügt
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  es_data:
+    driver: local
