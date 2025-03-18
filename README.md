@@ -1,10 +1,6 @@
-# ICC Ollama Deployment
+# Ollama Installation und Dokumentation
 
-Automatisierte Bereitstellung von Ollama mit GPU-Unterstützung auf der HAW Hamburg Informatik Compute Cloud (ICC).
-
-## Übersicht
-
-Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt.
+Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-Unterstützung auf der ICC der HAW Hamburg zu deployen. Zusätzlich wird ein Ollama WebUI als Benutzeroberfläche bereitgestellt sowie Funktionen zur Anpassung der Modelle an spezifische Anwendungsfälle.
 
 ## Inhaltsverzeichnis
 
@@ -19,6 +15,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - [Wartung](#wartung)
 - [Lizenz](#lizenz)
 
+
 ## Voraussetzungen
 
 - HAW Hamburg infw-Account mit Zugang zur ICC
@@ -26,6 +23,7 @@ Dieses Repository enthält Scripts und Konfigurationsdateien, um Ollama mit GPU-
 - (Optional) Terraform installiert (Nur für das lokale WebUI-Deployment)
 - Eine aktive VPN-Verbindung zum HAW-Netz (wenn außerhalb des HAW-Netzes)
 - (Optional) Make installiert für vereinfachte Befehle
+- (Optional) IntelliJ IDEA für die erweiterte IDE-Integration
 
 ## ICC-Zugang einrichten
 
@@ -36,7 +34,7 @@ Bevor Sie beginnen können, müssen Sie sich bei der ICC anmelden und Ihre Kubec
 ./scripts/icc-login.sh
 ```
 
-Dieses Skript:
+Dieses Skript führt Sie durch den gesamten Prozess:
 1. Öffnet die ICC-Login-Seite in Ihrem Standard-Browser
 2. Führt Sie durch den Anmeldeprozess mit Ihrer infw-Kennung
 3. Hilft beim Speichern und Einrichten der heruntergeladenen Kubeconfig-Datei
@@ -113,14 +111,11 @@ make gpu-test
 make gpu-monitor
 ```
 
-Mit Optionen für kontinuierliche Überwachung oder CSV-Export:
+Mit Optionen für kontinuierliche Überwachung:
 
 ```bash
 # 10 Messungen im 5-Sekunden-Intervall
-./scripts/monitor-gpu.sh -i 5 -c 10
-
-# Kompakte Ausgabe mit CSV-Export
-./scripts/monitor-gpu.sh -f compact -s gpu_metrics.csv
+./scripts/monitor-gpu.sh -i 5 
 ```
 
 ### GPU-Benchmarks durchführen
@@ -149,7 +144,7 @@ Einen Überblick über die Systemarchitektur und die Komponenten des Projekts fi
 
 ## Troubleshooting
 
-Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
+Bei Problemen mit der GPU-Funktionalität oder Modellanpassung können folgende Schritte helfen:
 
 1. Überprüfen Sie die GPU-Kompatibilität: `make gpu-compat`
 2. Testen Sie die GPU-Funktionalität: `make gpu-test`
@@ -157,8 +152,9 @@ Bei Problemen mit der GPU-Funktionalität können folgende Schritte helfen:
 4. Prüfen Sie die Logs des Ollama-Pods: `make logs`
 5. Öffnen Sie eine Shell im Pod: `make shell`
 
-Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#8-fehlerbehebung).
+Weitere Informationen zur Fehlerbehebung finden Sie in der [DOCUMENTATION.md](DOCUMENTATION.md#9-fehlerbehebung).
 
 ## Wartung
 
-Die neuen GPU-Testfunktionen ermöglichen ein kontinuierliches Monitoring und Benchmarking, um sicherzustellen, dass Ihre Ollama-Instanz optimal mit den verfügbaren GPU-Ressourcen arbeitet.
+Die Funktionen für GPU-Tests, Monitoring und Modellanpassung ermöglichen ein kontinuierliches Management Ihrer Ollama-Instanz, um sicherzustellen, dass sie optimal mit den verfügbaren Ressourcen arbeitet und an Ihre spezifischen Anforderungen angepasst ist.
+

@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # Skript zum Setzen der korrekten Ausführungsberechtigungen für alle Skripte
@@ -25,9 +26,23 @@ if [ -f "$ROOT_DIR/deploy.sh" ]; then
     echo -e "${GREEN}✓${NC} Ausführungsberechtigung für deploy.sh gesetzt"
 fi
 
-# Ausgabe der Skripte mit Ausführungsberechtigungen
+# Ausgabe der Skripte mit Ausführungsberechtigungen in einer macOS-kompatiblen Weise
 echo -e "\nSkripte mit Ausführungsberechtigungen:"
-find "$SCRIPT_DIR" -name "*.sh" -type f -executable | sort | sed 's|.*/||' | sed 's/^/  /'
+
+# MacOS-kompatible Methode zum Auflisten ausführbarer Dateien
+list_executable_scripts() {
+    local dir=$1
+    for file in "$dir"/*.sh; do
+        if [ -f "$file" ] && [ -x "$file" ]; then
+            basename "$file"
+        fi
+    done
+}
+
+# Skripte im Scripts-Verzeichnis auflisten
+list_executable_scripts "$SCRIPT_DIR" | sort | sed 's/^/  /'
+
+# deploy.sh im Stammverzeichnis auflisten
 if [ -f "$ROOT_DIR/deploy.sh" ] && [ -x "$ROOT_DIR/deploy.sh" ]; then
     echo "  deploy.sh"
 fi
